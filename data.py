@@ -688,7 +688,7 @@ class DataGenerator:
             data = pickle.load(fh)
 
         dg_train = DataGenerator(data, args, data_batch=data.data[args.train], is_training=True)
-        dg_dev = DataGenerator(data, args, data_batch=data.data[args.dev], is_training=True)
+        dg_dev = DataGenerator(data, args, data_batch=data.data[args.dev], is_training=False)
         dg_test = DataGenerator(data, args, data_batch=data.data[args.test], is_training=True)
 
         return dg_train, dg_dev, dg_test
