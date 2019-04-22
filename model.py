@@ -4,14 +4,10 @@ import torch.nn.functional as F
 from torch.nn import utils as nn_utils
 from util import *
 from torch.nn import utils as nn_utils
-from Layer import SimpleCat
+import pickle
+
+# from Layer import GloveMaskCat, SimpleCat
 import torch.nn.init as init
-import numpy as np
-from parse_path import constituency_path
-
-cp = constituency_path()
-
-
 def init_ortho(module):
     for weight_ in module.parameters():
         if len(weight_.size()) == 2:
@@ -48,12 +44,104 @@ class MLSTM(nn.Module):
         return unpacked
 
 
-class Tri_ParseGCNNSent(nn.Module):
+# input layer for 14
+class SimpleCat(nn.Module):
+    def __init__(self, config):
+        '''
+        Concatenate word embeddings and target embeddings
+        '''
+        super(SimpleCat, self).__init__()
+        self.config = config
+        with open(self.config.embed_path, 'rb') as f:
+            vectors = pickle.load(f).local_emb
+
+        self.local_emb = vectors
+        self.word_embed = nn.Embedding(vectors.shape[0], vectors.shape[1])
+        self.mask_embed = nn.Embedding(2, 50)
+
+        # positional embeddings
+        # n_position = 100
+        # self.position_enc = nn.Embedding(n_position, config.embed_dim, padding_idx=0)
+        # # self.position_enc.weight.data = self.position_encoding_init(n_position, config.embed_dim)
+        #
+        self.dropout = nn.Dropout(0.1)
+        #
+        # self.senti_embed = nn.Embedding(config.embed_num, 50)
+
+    # input are tensors
+    def forward(self, sent, mask, target, is_elmo=False, is_pos=False):
+        '''
+        Args:
+        sent: tensor, shape(batch_size, max_len, emb_dim)
+        mask: tensor, shape(batch_size, max_len)
+        '''
+        # Modified by Richard Sun
+        # Use ELmo embedding, note we need padding
+        # sent = Variable(sent)
+        # mask = Variable(mask)
+        # target = Variable(target)
+
+        # Use GloVe embedding
+        if self.config.if_gpu:
+            sent, mask,target = sent.cuda(), mask.cuda(),target.cuda()
+        # to embeddings
+        if is_elmo:
+            sent_vec = sent  # batch_siz*sent_len * dim
+        else:
+            sent_vec = self.word_embed(sent)  # batch_siz*sent_len * dim
+
+        target_vec = self.word_embed(target)
+        sent_vec = self.dropout(sent_vec)
+        # target_vec = self.dropout(target_vec)
+        ############
+        #         #Add sentiment-specific embeddings
+        #         senti_vec = self.senti_embed(sent)
+        #         sent_vec = torch.cat([sent_vec, senti_vec], 2)
+
+
+
+
+        # positional embeddings
+        if is_pos:
+            batch_size, max_len, _ = sent_vec.size()
+            pos = torch.arange(0, max_len)
+            if self.config.if_gpu: pos = pos.cuda()
+            pos = pos.expand(batch_size, max_len)
+            pos_vec = self.position_enc(pos)
+            sent_vec += pos_vec
+
+        mask_vec = self.mask_embed(mask)  # batch_size*max_len* dim
+        # print(mask_vec.size())
+
+        # Concatenation
+        sent_vec = torch.cat([sent_vec, mask_vec], 2)
+
+        # for test
+        return sent_vec,target_vec
+
+    def load_vector(self):
+        '''
+        Load pre-savedd word embeddings
+        '''
+        with open(self.config.embed_path, 'rb') as f:
+            vectors = pickle.load(f).local_emb
+
+            print("Loaded from {} with shape {}".format(self.config.embed_path, vectors.shape))
+            self.word_embed.weight = nn.Parameter(torch.FloatTensor(vectors))
+            # vectors = self.config.local_emb
+            self.word_embed.weight.data.copy_(torch.from_numpy(vectors))
+            # self.word_embed.weight.requires_grad = self.config.if_update_embed
+            self.word_embed.weight.requires_grad = False
+
+            # self.position_enc.requires_grad = self.config.if_update_embed
+            print('embeddings loaded')
+
+class Tri_RNNCNNSent(nn.Module):
     def __init__(self, config):
         '''
         In this model, only context words are processed by gated CNN, target is average word embeddings
         '''
-        super(ParseGCNNSent, self).__init__()
+        super(Tri_RNNCNNSent, self).__init__()
         self.config = config
 
         #V = config.embed_num
@@ -69,33 +157,43 @@ class Tri_ParseGCNNSent(nn.Module):
         self.convs1 = nn.ModuleList([nn.Conv1d(D, Co, K) for K in Ks])
         self.convs2 = nn.ModuleList([nn.Conv1d(D, Co, K) for K in Ks])
         self.convs3 = nn.ModuleList([nn.Conv1d(D, Co, K, padding=K-2) for K in Kt])
+
+        self.convs4 = nn.ModuleList([nn.Conv1d(Co, Co, K) for K in Ks])
+        self.convs5 = nn.ModuleList([nn.Conv1d(Co, Co, K) for K in Ks])
+
         self.fc_aspect = nn.Linear(len(Kt)*Co, Co)
 
         self.fc1 = nn.Linear(len(Ks)*Co, C)
         self.fc2 = nn.Linear(len(Ks)*Co, C)
         self.fc3 = nn.Linear(len(Ks)*Co, C)
+
+
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
 
         self.cat_layer = SimpleCat(config)
-        self.cat_layer.load_vector()
+        self.cat_layer.load_vector() # init word embeding
+        # self.lambda_unsupervised = nn.Parameter(torch.tensor([0.1]).cuda(),requires_grad = True)
+        # self.lambda_balance= nn.Parameter(torch.tensor([0.0]).cuda(),requires_grad = True)
+        # self.lambda_f = nn.Parameter(torch.tensor([1.0]).cuda(), requires_grad=True)
 
 
 
-    def compute_score(self, sents, masks, lens, texts):
+    def compute_score(self, sents, masks, lens):
         '''
         inputs are list of list for the convenince of top CRF
         Args:
         sents: a list of sentences， batch_size*max_len*(2*emb_dim)
-        masks: a list of binry to indicate target position, batch_size*max_len
+        masks: a list of binary to indicate target position, batch_size*max_len
         label: a list labels
-        weights: batch_size, max_len
         '''
         #Get the rnn outputs for each word, batch_size*max_len*hidden_size
         context = self.lstm(sents, lens)
 
         #Get the target embedding
         batch_size, sent_len, dim = context.size()
+
+
 
         #Find target indices, a list of indices
         target_indices, target_max_len = convert_mask_index(masks)
@@ -112,28 +210,29 @@ class Tri_ParseGCNNSent(nn.Module):
             target_embe_squeeze[i][:len(index)] = target_emb[i][index]
         if self.config.if_gpu: target_embe_squeeze = target_embe_squeeze.cuda()
 
-        #Get the parsing weights
-        weights = get_context_weight(texts, target_indices, sent_len)
-        weights = weights.expand(dim, batch_size, sent_len).transpose(0, 1).transpose(1, 2)
-        if self.config.if_gpu: weights = weights.cuda()
-        context = context * weights
-
         #Conv input: batch_size * emb_dim * max_len
         #Conv output: batch_size * out_dim * (max_len-k+1)
         target_conv = [self.relu(conv(target_embe_squeeze.transpose(1, 2))) for conv in self.convs3]  # [(N,Co,L), ...]*len(Ks)
         aa = [F.max_pool1d(a, a.size(2)).squeeze(2) for a in target_conv]# [(batch_size,Co), ...]*len(Ks)
         aspect_v = torch.cat(aa, 1)#N, Co*len(K)
-        aspect_v = self.fc_aspect(aspect_v)#batch_size, Co
+        aspect_v = self.fc_aspect(aspect_v)
 
-        x = [F.tanh(conv(context.transpose(1, 2))) for conv in self.convs1]  # [(N,Co,L), ...]*len(Ks)
-        y = [F.relu(conv(context.transpose(1, 2)) + aspect_v.unsqueeze(2)) for conv in self.convs2]
-        x = [i*j for i, j in zip(x, y)] #batch_size * out_dim * (max_len-k+1) * len(filters)
+#         x = [F.tanh(conv(context.transpose(1, 2))) for conv in self.convs1]  # [(N,Co,L), ...]*len(Ks)
+#         #y = [F.relu(conv(context.transpose(1, 2)) + aspect_v.unsqueeze(2)) for conv in self.convs2]
+#         y = [F.relu(aspect_v.unsqueeze(2)) for conv in self.convs2]
+#         x = [i*j for i, j in zip(x, y)] #batch_size, Co, len-1 .  batch_size, Co, len-2
+
+        x = [conv(context.transpose(1, 2)) for conv in self.convs1]  # [(N,Co,L), ...]*len(Ks)
+        y = [F.tanh(conv(context.transpose(1, 2)) + aspect_v.unsqueeze(2)) for conv in self.convs2]
+        #y = [F.sigmoid(aspect_v.unsqueeze(2)) for conv in self.convs2]
+        x = [i*j for i, j in zip(x, y)] #batch_size, Co, len-1 .  batch_size, Co, len-2
 
         # pooling method
         x0 = [F.max_pool1d(i, i.size(2)).squeeze(2) for i in x]  # [(N,out_dim), ...]*len(Ks)
-        x0 = [i.view(i.size(0), -1) for i in x0]
+        x0 = [i.view(i.size(0), -1) for i in x0]#batch_size*2Co
 
         sents_vec = torch.cat(x0, 1)#N*(3*out_dim)
+        #logit = self.fc1(x0)  # (N,C)
 
         #Dropout
         if self.training:
@@ -142,36 +241,30 @@ class Tri_ParseGCNNSent(nn.Module):
         output1 = self.fc1(sents_vec)#Bach_size*label_size
         output2 = self.fc2(sents_vec)
         output3 = self.fc3(sents_vec)
-        f_loss = self.fc1.weights * self.fc2.weights
-        scores = F.log_softmax(output1, dim=1)#Batch_size*label_size
-        return scores, output1, output2, output3, f_loss
+        # output1 = F.log_softmax(output1, dim=1)#Batch_size*label_size
+        # output2 = F.log_softmax(output2, dim=1)
+        f_loss = torch.mean(self.fc1.weight * self.fc2.weight)
+        return output1, output2, output3, f_loss
 
 
-    def forward(self, sents, masks, labels, lens, texts):
+    def forward(self, sents, masks, labels, lens):
         #Sent emb_dim
-        #Map words to embeddings
-        sents = self.cat_layer(sents, masks)
+        sents = self.cat_layer(sents, masks)#mask embedding
+        #sents, _ = self.cat_layer(sents, masks)
         #sents = F.dropout(sents, p=0.5, training=self.training)
-
-        #Compute score
-        scores, output1, output2, output3, f_loss = self.compute_score(sents, masks, lens, texts)
-        loss = nn.NLLLoss()
-        #cls_loss = -1 * torch.log(scores[label])
-        cls_loss = loss(scores, labels)
+        output1, output2, output3, f_loss = self.compute_score(sents, masks, lens)
 
         #print('Transition', pena)
-        return cls_loss, output1, output2, output3, f_loss
+        return output1, output2, output3, f_loss
 
-    def predict(self, sents, masks, sent_lens, texts):
-        #sent = self.cat_layer(sent, mask)
-        sents = self.cat_layer(sents, masks)
-
-        #Compute score
-        scores, output1, output2, output3, _ = self.compute_score(sents, masks, sent_lens, texts)
-        _, pred_labels = scores.max(1)#Find the max label in the 2nd dimension
+    def predict(self, sents, masks, sent_lens):
+        sents = self.cat_layer(sents, masks)#mask embedding
+        #sents, _ = self.cat_layer(sents, masks)
+        output1, output2, output3, f_loss = self.compute_score(sents, masks, sent_lens)
 
         #Modified by Richard Sun
-        return pred_labels, output1, output2, output3
+        return output1, output2, output3
+
 
 def convert_mask_index(masks):
     '''
@@ -189,30 +282,3 @@ def convert_mask_index(masks):
         print('Mask Data Error')
         print(mask)
     return target_indice, max_len
-
-
-def get_context_weight(texts, targets, max_len):
-    '''
-    Constituency weight
-    '''
-
-    weights = np.zeros([len(texts), max_len])#Fill the padding one as 0
-    for i, token in enumerate(texts):
-        max_w, min_w, a_v = cp.proceed(token, targets[i])
-
-        #get the distance
-        weights[i, :len(max_w)] = max_w
-    weights = torch.FloatTensor(weights)
-    weights.required_grad = False
-    return weights
-
-
-def get_parse_pos(texts, max_len):
-    parse_pos = np.ones([len(texts), max_len, 15]) * (-1)
-    for i, text in enumerate(texts):
-        parsed_sent = cp.build_parser(text)
-        positions = cp.get_leave_pos(parsed_sent)
-        pad_pos = cp.get_parse_feature(positions)
-        parse_pos[i, :len(positions)] = pad_pos
-    parse_pos = torch.FloatTensor(parse_pos).cuda()
-    return parse_pos
