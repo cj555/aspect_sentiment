@@ -1,9 +1,10 @@
-# aspect_sentiment tri-learning
+# Aspect Sentiment- Tri-Learning
 
 ###  Documentation
 
 #### Data
-change configs in data.py 
+
+Change configs in config.DataConfig and default.yaml
     
     
     class DataConfig(object):
@@ -19,5 +20,18 @@ change configs in data.py
         self.is_stanford_nlp = False
         self.batch_size = 
         self.pickle_path = self.data_path + self.output_name + '.pkl'
+        
+[statistics](https://docs.google.com/spreadsheets/d/18AfV2o6X47m8CaY0XKV24MgGeFJ_DqqGGdLNW9hGLVo/edit#gid=219973634)
 
-preprocess with python data.py
+Preprocess
+    
+    python data.py
+
+#### Training
+Run 
+
+    python train.py
+
+
+
+#### Reference
