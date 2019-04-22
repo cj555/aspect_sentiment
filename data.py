@@ -737,7 +737,7 @@ class DataGenerator:
         target_ids = [target_ids[i.item()] for i in perm_idx]
         return label_list, mask_vecs, sent_ids, sent_lens, target_ids, targets, texts
 
-    def get_ids_samples(self, is_balanced=False, sort=False,pad_target=False):
+    def get_ids_samples(self, is_balanced=False, sort=True,pad_target=False):
         '''
         Get samples including ids of words, labels
         '''

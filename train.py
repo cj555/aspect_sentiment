@@ -82,40 +82,87 @@ def save_checkpoint(save_model, i_iter, args, is_best=True):
     save_best_checkpoint(dict_model, is_best, filename)
 
 
-def train(model, dg_train, dg_valid, dg_test, optimizer, args):
+def train(model, dg_source_train, dg_target_train, dg_test, optimizer, args):
     cls_loss_value = AverageMeter(10)
+    f_loss_value = AverageMeter(10)
+    unsupervised_loss_value = AverageMeter(10)
     best_acc = 0
     model.train()
     is_best = False
+    weight = torch.Tensor([0.16, 0.71, 0.13])
+    weight = 1 / weight
+    weight = (weight - torch.min(weight)) / (torch.max(weight) - torch.min(weight))
+    criterion_cls = torch.nn.CrossEntropyLoss(weight=weight.cuda())
     logger.info("Start Experiment")
-    loops = int(dg_train.data_len / args.batch_size)
+    loops = int(dg_source_train.data_len / args.batch_size)
     for e_ in range(args.epoch):
         if e_ % args.adjust_every == 0:
             adjust_learning_rate(optimizer, e_, args)
         for idx in range(loops):
-            sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(dg_train.get_ids_samples())
-            cls_loss = model(sent_vecs.cuda(), mask_vecs.cuda(), label_list.cuda(), sent_lens.cuda())
+            sent_vecs, mask_vecs, label_list, sent_lens, texts, _, _ = next(dg_source_train.get_ids_samples())
+            output1, output2, output3, f_loss = model(sent_vecs.cuda(), mask_vecs.cuda(),
+                             label_list.cuda(), sent_lens.cuda())
+            cls_loss = criterion_cls(output1, label_list.cuda()) + criterion_cls(output2, label_list.cuda())
+            cls_loss /= 2
+            loss = cls_loss + args.lambda_f * f_loss
             cls_loss_value.update(cls_loss.item())
+            f_loss_value.update(f_loss.item())
             model.zero_grad()
-            cls_loss.backward()
+            loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
             optimizer.step()
 
-            if idx % args.print_freq:
-                logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
+            # for target
 
-        valid_acc = evaluate_test(dg_valid, model, args)
+            sent_vecs_target, mask_vecs_target, label_list_target, sent_lens_target, texts_target, _, _ = next(
+                dg_target_train.get_ids_samples())
+            output1, output2, output3, f_loss = model(sent_vecs_target.cuda(), mask_vecs_target.cuda(),
+                                            label_list_target.cuda(), sent_lens_target.cuda())
+
+            output1 = torch.nn.functional.softmax(output1)
+            output2 = torch.nn.functional.softmax(output2)
+            output1_logit, output1_label = torch.max(output1, dim=1)
+            output2_logit, output2_label = torch.max(output2, dim=1)
+
+            output_label_mask = (output1_label == output2_label) & (output1_logit>args.threshold)
+
+            selected_label = output1_label[output_label_mask].view(-1)
+            if selected_label.size(0) > 0:
+                unsupervised_loss = criterion_cls(output3[output_label_mask],
+                                              selected_label)
+                unsupervised_loss += criterion_cls(output2[output_label_mask],
+                                              selected_label)
+                unsupervised_loss += criterion_cls(output1[output_label_mask],
+                                              selected_label)
+                unsupervised_loss_value.update(unsupervised_loss.item())
+                loss = unsupervised_loss*0.1
+                model.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
+
+                optimizer.step()
+
+
+
+
+            if idx % args.print_freq == 0:
+                logger.info("i_iter {}/{} cls_loss: {:.3f}\t"
+                            "f_lss: {:.5f} \t"
+                            "unsupervised_loss: {:.5f}".format(idx, loops,
+                                                cls_loss_value.avg,
+                                                f_loss_value.avg,
+                                                unsupervised_loss_value.avg))
+
+
+
+        valid_acc = evaluate_test(dg_test, model, args)
         logger.info("epoch {}, Validation acc: {}".format(e_, valid_acc))
         if valid_acc > best_acc:
-            is_best = False
+            is_best = True
             best_acc = valid_acc
             save_checkpoint(model, e_, args, is_best)
-        output_samples = False
-        if e_ % 10 == 0:
-            output_samples = True
-        test_acc = evaluate_test(dg_test, model, args, output_samples)
-        logger.info("epoch {}, Test acc: {}".format(e_, test_acc))
         model.train()
+        is_best=False
 
 
 def evaluate_test(dr_test, model, args, sample_out=False):
@@ -132,7 +179,7 @@ def evaluate_test(dr_test, model, args, sample_out=False):
     pred_labels = []
     while dr_test.index < dr_test.data_len:
         sent, mask, label, sent_len, texts, targets, _ = next(dr_test.get_ids_samples())
-        pred_label = model.predict(sent.cuda(), mask.cuda(), sent_len.cuda())
+        _,_,_,pred_label = model.predict(sent.cuda(), mask.cuda(), sent_len.cuda())
 
         # Compute correct predictions
         correct_count += sum(pred_label == label.cuda()).item()
