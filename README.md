@@ -4,7 +4,7 @@
 
 1. Co-regularized Alignment for Unsupervised Domain Adaptation [[Paper,NeurIPS2018]](http://papers.nips.cc/paper/8146-co-regularized-alignment-for-unsupervised-domain-adaptation.pdf)
 
-2. Strong Baselines for Neural Semi-supervised Learning under Domain Shift [[paper, ACL2018](https://arxiv.org/abs/1804.09530)
+2. Strong Baselines for Neural Semi-supervised Learning under Domain Shift [[paper, ACL2018]](https://arxiv.org/abs/1804.09530)
 
 3. Semi-Supervised sequence Modeling with Cross-View Training [[Paper, EMNLP2018]](https://arxiv.org/abs/1809.08370) 
 4. Word Translation Without Parallel Data [[Paper, ICLR2017]](https://arxiv.org/abs/1710.04087)
