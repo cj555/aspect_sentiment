@@ -11,7 +11,13 @@
   
 3. Semi-Supervised sequence Modeling with Cross-View Training [[Paper, EMNLP2018]](https://arxiv.org/abs/1809.08370) 
 4. Word Translation Without Parallel Data [[Paper, ICLR2017]](https://arxiv.org/abs/1710.04087)
+  > The word translations with parallel data boils down to the Procrustes problems. One can learn the mapping W with SVD. However, to find the word translations without parallel data is difficult. This paper proposed a domain-adversarial approach  (Adv) for learning W. The model contains a discriminator to discriminate between elements randomly sampled from WX (X is source, Y is target). To produce reliable matching pairs between two languages, the paper use cross-domain simiarity local scaling (CSLS) instead of nearest neighbors. The unspervision method with Adv shows comparable result with supervison method.
+
+
 5. Multi-class Classification without Multi-class Labels [[Paper, ICLR2019]](https://arxiv.org/pdf/1901.00544.pdf)
+
+
+
 
 # Other Resources
 
