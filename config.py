@@ -6,6 +6,7 @@ import pickle
 from data import DataReader, DataGenerator, DataHelper
 # from data import DataReader, DataGenerator, DataHelper
 
+
 class DataConfig(object):
     def __init__(self):
         self.data_path = 'data/'
@@ -16,6 +17,36 @@ class DataConfig(object):
         self.embed_num = 5120  # most freq words
         self.embed_dim = 100
         self.pretrained_embed_path = 'data/glove_indo_original.100d.txt'
+        self.is_stanford_nlp = False
+        self.batch_size = 32
+        self.pickle_path = self.data_path + self.output_name + '.pkl'
+
+
+class DataConfig1(object):
+    def __init__(self):
+        self.data_path = 'data/'
+        self.train = 'data/Laptop_Train_v2.xml'
+        self.dev = 'data/Laptop_Train_v2.xml'
+        self.test = 'data/Restaurants_Test_Gold.xml'
+        self.output_name = 'laptop2restaurants'
+        self.embed_num = 5120  # most freq words
+        self.embed_dim = 300
+        self.pretrained_embed_path = 'data/glove.840B.300d.txt'
+        self.is_stanford_nlp = False
+        self.batch_size = 32
+        self.pickle_path = self.data_path + self.output_name + '.pkl'
+
+
+class DataConfig2(object):
+    def __init__(self):
+        self.data_path = 'data/'
+        self.train = 'data/Restaurants_Train_v2.xml'
+        self.dev = 'data/Laptop_Train_v2.xml'
+        self.test = 'data/Laptops_Test_Gold.xml'
+        self.output_name = 'restaurants2laptop'
+        self.embed_num = 5120  # most freq words
+        self.embed_dim = 300
+        self.pretrained_embed_path = 'data/glove.840B.300d.txt'
         self.is_stanford_nlp = False
         self.batch_size = 32
         self.pickle_path = self.data_path + self.output_name + '.pkl'

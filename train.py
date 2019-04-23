@@ -144,7 +144,7 @@ def evaluate_test(dr_test, model, args, sample_out=False):
     pred_labels = []
     while dr_test.index < dr_test.data_len:
         sent, mask, label, sent_len, texts, targets, _ = next(dr_test.get_ids_samples())
-        _, _, _, pred_label = model.predict(sent.cuda(), mask.cuda(), sent_len.cuda())
+        pred_label, _ = model.predict(sent.cuda(), mask.cuda(), sent_len.cuda())
 
         # Compute correct predictions
         correct_count += sum(pred_label == label.cuda()).item()
@@ -166,9 +166,10 @@ def evaluate_test(dr_test, model, args, sample_out=False):
     acc = correct_count * 1.0 / dr_test.data_len
     print('Confusion Matrix')
     print(confusion_matrix(true_labels, pred_labels))
-    print('f1_score:', f1_score(true_labels, pred_labels, average='macro'))
+    f1 = f1_score(true_labels, pred_labels, average='macro')
+    print('f1_score:', f1)
     # print("Test Sentiment Accuray {0}, {1}:{2}".format(acc, correct_count, all_counter))
-    return acc
+    return acc, f1
 
 
 def main():
@@ -218,7 +219,7 @@ def main():
     optimizer = create_opt(parameters, args)
 
     if args.training:
-        train(model, dg_train, dg_valid, dg_test, optimizer, args,tb_logger)
+        train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger)
     else:
         pass
 

@@ -419,7 +419,7 @@ class DataReader:
         self.local_dict = None
         self.word2id = None
 
-    def read_train_test_data(self, data_path_list, data_name, data_source='xml', use_glove=False):
+    def read_train_test_data(self, data_path_list, data_name, data_source='xml', use_glove=False, split_data_from_train=False):
         '''
         Reading Raw Dataset from several files
         Args:
@@ -689,7 +689,7 @@ class DataGenerator:
 
         dg_train = DataGenerator(data, args, data_batch=data.data[args.train], is_training=True)
         dg_dev = DataGenerator(data, args, data_batch=data.data[args.dev], is_training=False)
-        dg_test = DataGenerator(data, args, data_batch=data.data[args.test], is_training=True)
+        dg_test = DataGenerator(data, args, data_batch=data.data[args.test], is_training=False)
 
         return dg_train, dg_dev, dg_test
 
@@ -849,6 +849,6 @@ class DataGenerator:
             yield sent_vecs, mask_vecs, label_list, sent_lens
 
 
-# if __name__ == '__main__':
-    # DataGenerator.generate(DataConfig())
+if __name__ == '__main__':
+    DataGenerator.generate(DataConfig1())
     # DataGenerator.load(DataConfig())
