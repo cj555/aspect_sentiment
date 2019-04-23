@@ -22,7 +22,7 @@ import argparse
 from torch import optim
 from sklearn.metrics import confusion_matrix, f1_score
 from config import ModelConfig, DataConfig
-from model import Tri_RNNCNNSent
+from model import CRFAspectSent
 
 # Get model names in the folder
 # model_names = sorted(name for name in models.__dict__
@@ -83,82 +83,51 @@ def save_checkpoint(save_model, i_iter, args, is_best=True):
     save_best_checkpoint(dict_model, is_best, filename)
 
 
-def train(model, dg_source_train, dg_target_train, dg_test, optimizer, args):
+def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger):
     cls_loss_value = AverageMeter(10)
-    f_loss_value = AverageMeter(10)
-    unsupervised_loss_value = AverageMeter(10)
     best_acc = 0
+    best_f1 = 0
     model.train()
     is_best = False
-    weight = torch.Tensor([0.16, 0.71, 0.13])
-    weight = 1 / weight
-    weight = (weight - torch.min(weight)) / (torch.max(weight) - torch.min(weight))
-    criterion_cls = torch.nn.CrossEntropyLoss(weight=weight.cuda())
     logger.info("Start Experiment")
-    loops = int(dg_source_train.data_len / args.batch_size)
+    loops = int(dg_train.data_len / args.batch_size)
     for e_ in range(args.epoch):
         if e_ % args.adjust_every == 0:
             adjust_learning_rate(optimizer, e_, args)
         for idx in range(loops):
-            sent_vecs, mask_vecs, label_list, sent_lens, texts, _, _ = next(dg_source_train.get_ids_samples())
-            output1, output2, output3, f_loss = model(sent_vecs.cuda(), mask_vecs.cuda(),
-                                                      label_list.cuda(), sent_lens.cuda())
-            cls_loss = criterion_cls(output1, label_list.cuda()) + criterion_cls(output2, label_list.cuda())
-            cls_loss /= 2
-            loss = cls_loss + args.lambda_f * f_loss
+            sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(dg_train.get_ids_samples())
+            if args.if_gpu:
+                sent_vecs, mask_vecs = sent_vecs.cuda(), mask_vecs.cuda()
+                label_list, sent_lens = label_list.cuda(), sent_lens.cuda()
+            cls_loss, norm_pen = model(sent_vecs, mask_vecs, label_list, sent_lens)
             cls_loss_value.update(cls_loss.item())
-            f_loss_value.update(f_loss.item())
+
+            total_loss = cls_loss + norm_pen
             model.zero_grad()
-            loss.backward()
+            total_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
             optimizer.step()
 
-            # for target
-
-            sent_vecs_target, mask_vecs_target, label_list_target, sent_lens_target, texts_target, _, _ = next(
-                dg_test.get_ids_samples())
-            output1, output2, output3, f_loss = model(sent_vecs_target.cuda(), mask_vecs_target.cuda(),
-                                                      label_list_target.cuda(), sent_lens_target.cuda())
-
-            output1 = torch.nn.functional.softmax(output1)
-            output2 = torch.nn.functional.softmax(output2)
-            output1_logit, output1_label = torch.max(output1, dim=1)
-            output2_logit, output2_label = torch.max(output2, dim=1)
-
-            output_label_mask = (output1_label == output2_label) & (output1_logit > args.threshold)
-
-            selected_label = output1_label[output_label_mask].view(-1)
-            if selected_label.size(0) > 0:
-                unsupervised_loss = criterion_cls(output3[output_label_mask],
-                                                  selected_label)
-                unsupervised_loss += criterion_cls(output2[output_label_mask],
-                                                   selected_label)
-                unsupervised_loss += criterion_cls(output1[output_label_mask],
-                                                   selected_label)
-                unsupervised_loss_value.update(unsupervised_loss.item())
-                loss = unsupervised_loss * 0.1
-                model.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
-
-                optimizer.step()
-
             if idx % args.print_freq == 0:
-                logger.info("i_iter {}/{} cls_loss: {:.3f}\t"
-                            "f_lss: {:.5f} \t"
-                            "unsupervised_loss: {:.5f}".format(idx, loops,
-                                                               cls_loss_value.avg,
-                                                               f_loss_value.avg,
-                                                               unsupervised_loss_value.avg))
+                print("cls loss {0} with penalty {1}".format(cls_loss.item(), norm_pen.item()))
+                logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
+                tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
 
-        valid_acc = evaluate_test(dg_target_train, model, args)
-        logger.info("epoch {}, Validation acc: {}".format(e_, valid_acc))
-        if valid_acc > best_acc:
+        valid_acc, valid_f1 = evaluate_test(dg_valid, model, args)
+        logger.info("epoch {}, Validation f1: {}".format(e_, valid_f1))
+        if valid_f1 > best_f1:
             is_best = True
-            best_acc = valid_acc
+            best_f1 = valid_f1
             save_checkpoint(model, e_, args, is_best)
+            output_samples = False
+            if e_ % 10 == 0:
+                output_samples = True
+            test_acc, test_f1 = evaluate_test(dg_test, model, args, output_samples)
+            logger.info("epoch {}, Test f1: {}".format(e_, test_f1))
+
         model.train()
         is_best = False
+    logger.info("Best Test f1: {}".format(test_f1))
 
 
 def evaluate_test(dr_test, model, args, sample_out=False):
@@ -240,7 +209,7 @@ def main():
     # dg_train = data_generator(args, train_data)
     # dg_valid = data_generator(args, valid_data, False)
     # dg_test = data_generator(args, test_data, False)
-    model = Tri_RNNCNNSent(args)
+    model = CRFAspectSent(args)
     # model = models.__dict__[args.arch](args)
     if args.use_gpu:
         model.cuda()
@@ -249,7 +218,7 @@ def main():
     optimizer = create_opt(parameters, args)
 
     if args.training:
-        train(model, dg_train, dg_valid, dg_test, optimizer, args)
+        train(model, dg_train, dg_valid, dg_test, optimizer, args,tb_logger)
     else:
         pass
 

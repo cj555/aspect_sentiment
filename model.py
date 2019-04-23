@@ -10,7 +10,7 @@ import torch.nn.init as init
 import pdb
 import pickle
 import numpy as np
-from Layer import SimpleCat
+# from Layer import SimpleCat
 from torch.nn import utils as nn_utils
 from util import *
 
@@ -165,6 +165,7 @@ class CRFAspectSent(nn.Module):
 
         self.loss = nn.NLLLoss()
         self.cat_layer = SimpleCat(config)
+        self.cat_layer.load_vector()
         # Modified by Richard Sun
 
     def compute_scores(self, sents, masks, lens):
@@ -307,7 +308,7 @@ class CRFAspectSent(nn.Module):
         print('Transition', pena)
 
         print("cls loss {0} with penalty {1}".format(cls_loss.item(), norm_pen.item()))
-        return cls_loss + norm_pen
+        return cls_loss,norm_pen
 
     def predict(self, sents, masks, sent_lens):
         sents = self.cat_layer(sents, masks)

@@ -197,3 +197,31 @@ def create_logger(name, log_file, level=logging.INFO):
     l.addHandler(fh)
     l.addHandler(sh)
     return l
+
+# Compute log sum exp in a numerically stable way for the forward algorithm
+# vec is n * n, norm in row
+def log_sum_exp_m(mat):
+    row, column = mat.size()
+    ret_l = []
+    for i in range(row):
+        vec = mat[i]
+        max_score = vec[argmax(vec)]
+        max_score_broadcast = max_score.view(-1).expand(1, vec.size()[0])
+        ret_l.append(max_score + \
+                     torch.log(torch.sum(torch.exp(vec - max_score_broadcast))))
+    return torch.stack(ret_l)
+
+
+def log_sum_exp(vec_list):
+    tmp_mat = torch.stack(vec_list, 0)
+    m, n = tmp_mat.size()
+    # value may be nan because of gradient explosion
+    try:
+        max_score = torch.max(tmp_mat)
+    except:
+        pdb.set_trace()
+    max_expand = max_score.expand(m, n)
+    max_ex_v = max_score.expand(1, n)
+    # sum along dim 0
+    ret_val = max_ex_v + torch.log(torch.sum(torch.exp(tmp_mat - max_expand), 0))
+    return ret_val
