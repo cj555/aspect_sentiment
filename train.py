@@ -107,7 +107,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args):
             if idx % args.print_freq == 0:
                 logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
 
-        #train_acc, train_f1 = evaluate_test(dg_train, model, args)
+        # train_acc, train_f1 = evaluate_test(dg_train, model, args)
         valid_acc, valid_f1 = evaluate_test(dg_valid, model, args)
         logger.info("epoch {}, Validation f1: {}".format(e_, valid_f1))
         if valid_f1 > best_f1:
@@ -121,6 +121,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args):
             logger.info("epoch {}, Test f1: {}".format(e_, test_f1))
         print('Final test f1:', test_f1)
         model.train()
+
 
 def evaluate_test(dr_test, model, args, sample_out=False):
     mistake_samples = 'data/mistakes.txt'
@@ -139,7 +140,7 @@ def evaluate_test(dr_test, model, args, sample_out=False):
             dr_test.get_ids_samples(sort=True, pad_target=True))
 
         # sent, masks, target, sent_len):
-        pred_label= model.predict(sent_vecs.cuda(), mask_vecs.cuda(), target_ids.cuda(),sent_lens.cuda())
+        pred_label = model.predict(sent_vecs.cuda(), mask_vecs.cuda(), target_ids.cuda(), sent_lens.cuda())
 
         # Compute correct predictions
         correct_count += sum(pred_label == label.cuda()).item()
