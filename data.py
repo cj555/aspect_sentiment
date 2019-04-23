@@ -15,7 +15,7 @@ from collections import Counter
 ##Added by Richard Sun
 from allennlp.modules.elmo import Elmo, batch_to_ids
 import en_core_web_sm
-# from config import DataConfig
+from config import DataConfig
 
 nlp = en_core_web_sm.load()
 
@@ -428,10 +428,22 @@ class DataReader:
         print('Reading Dataset....')
         data_list = []
         text_word_list = []
-        for data_path in data_path_list:
-            data, text_words = self.dh.read(data_path, data_source)
-            data_list.append(data)
-            text_word_list.extend(text_words)
+        for i, data_path in enumerate(data_path_list):
+            if i==0 and split_data_from_train==True:
+                data, text_words = self.dh.read(data_path, data_source)
+                split_at = int(len(data) * 0.05)
+                print('split dev number:{0}'.format(split_at))
+                data_train = data[:split_at]
+                data_dev = data[split_at:]
+                data_list.append(data_train)
+                data_list.append(data_dev)
+                text_word_list.extend(text_words)
+            elif i==1 and split_data_from_train==True:
+                pass
+            else:
+                data, text_words = self.dh.read(data_path, data_source)
+                data_list.append(data)
+                text_word_list.extend(text_words)
         # Build dictionary based on all the words
         if not use_glove:
             #######################Buld a local vocabulary
@@ -678,7 +690,10 @@ class DataGenerator:
 
         path_list = [args.train, args.dev, args.test]
         dr = DataReader(args)
-        dr.read_train_test_data(path_list, data_name=args.output_name)
+        if args.dev == '':
+            dr.read_train_test_data(path_list, data_name=args.output_name,split_data_from_train=True)
+        else:
+            dr.read_train_test_data(path_list, data_name=args.output_name, split_data_from_train=False)
         print('Data Preprocessed!')
 
     @staticmethod
@@ -850,5 +865,6 @@ class DataGenerator:
 
 
 if __name__ == '__main__':
-    DataGenerator.generate(DataConfig1())
+    from config import DataConfig1
+    DataGenerator.generate(DataConfig())
     # DataGenerator.load(DataConfig())
