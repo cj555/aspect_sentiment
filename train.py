@@ -22,7 +22,7 @@ import argparse
 from torch import optim
 from sklearn.metrics import confusion_matrix, f1_score
 from config import ModelConfig, DataConfig
-from model import CRFAspectSent
+from model import CNN_Gate_Aspect_Text
 
 # Get model names in the folder
 # model_names = sorted(name for name in models.__dict__
@@ -83,7 +83,7 @@ def save_checkpoint(save_model, i_iter, args, is_best=True):
     save_best_checkpoint(dict_model, is_best, filename)
 
 
-def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger):
+def train(model, dg_train, dg_valid, dg_test, optimizer, args):
     cls_loss_value = AverageMeter(10)
     best_acc = 0
     best_f1 = 0
@@ -95,28 +95,23 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger):
         if e_ % args.adjust_every == 0:
             adjust_learning_rate(optimizer, e_, args)
         for idx in range(loops):
-            sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(dg_train.get_ids_samples())
-            if args.if_gpu:
-                sent_vecs, mask_vecs = sent_vecs.cuda(), mask_vecs.cuda()
-                label_list, sent_lens = label_list.cuda(), sent_lens.cuda()
-            cls_loss, norm_pen = model(sent_vecs, mask_vecs, label_list, sent_lens)
+            sent_vecs, mask_vecs, label_list, sent_lens, _, _, target_ids = next(
+                dg_train.get_ids_samples(sort=True, pad_target=True))
+            cls_loss = model(sent_vecs.cuda(), mask_vecs.cuda(), target_ids, label_list.cuda(), sent_lens.cuda())
             cls_loss_value.update(cls_loss.item())
-
-            total_loss = cls_loss + norm_pen
             model.zero_grad()
-            total_loss.backward()
+            cls_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
             optimizer.step()
 
             if idx % args.print_freq == 0:
-                print("cls loss {0} with penalty {1}".format(cls_loss.item(), norm_pen.item()))
                 logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
-                tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
 
+        #train_acc, train_f1 = evaluate_test(dg_train, model, args)
         valid_acc, valid_f1 = evaluate_test(dg_valid, model, args)
         logger.info("epoch {}, Validation f1: {}".format(e_, valid_f1))
         if valid_f1 > best_f1:
-            is_best = True
+            is_best = False
             best_f1 = valid_f1
             save_checkpoint(model, e_, args, is_best)
             output_samples = False
@@ -124,11 +119,8 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger):
                 output_samples = True
             test_acc, test_f1 = evaluate_test(dg_test, model, args, output_samples)
             logger.info("epoch {}, Test f1: {}".format(e_, test_f1))
-
+        print('Final test f1:', test_f1)
         model.train()
-        is_best = False
-    logger.info("Best Test f1: {}".format(test_f1))
-
 
 def evaluate_test(dr_test, model, args, sample_out=False):
     mistake_samples = 'data/mistakes.txt'
@@ -143,8 +135,11 @@ def evaluate_test(dr_test, model, args, sample_out=False):
     true_labels = []
     pred_labels = []
     while dr_test.index < dr_test.data_len:
-        sent, mask, label, sent_len, texts, targets, _ = next(dr_test.get_ids_samples())
-        pred_label, _ = model.predict(sent.cuda(), mask.cuda(), sent_len.cuda())
+        sent_vecs, mask_vecs, label, sent_lens, _, _, target_ids = next(
+            dr_test.get_ids_samples(sort=True, pad_target=True))
+
+        # sent, masks, target, sent_len):
+        pred_label= model.predict(sent_vecs.cuda(), mask_vecs.cuda(), target_ids.cuda(),sent_lens.cuda())
 
         # Compute correct predictions
         correct_count += sum(pred_label == label.cuda()).item()
@@ -154,14 +149,14 @@ def evaluate_test(dr_test, model, args, sample_out=False):
 
         ##Output wrong samples, for debugging
         indices = torch.nonzero(pred_label != label.cuda())
-        if len(indices) > 0:
-            indices = indices.squeeze(1)
-        if sample_out:
-            with open(mistake_samples, 'a') as f:
-                for i in indices:
-                    line = texts[i] + '###' + ' '.join(targets[i]) + '###' + str(label[i]) + '###' + str(
-                        pred_label[i]) + '\n'
-                    f.write(line)
+        # if len(indices) > 0:
+        #     indices = indices.squeeze(1)
+        # if sample_out:
+        #     with open(mistake_samples, 'a') as f:
+        #         for i in indices:
+        #             line = texts[i] + '###' + ' '.join(targets[i]) + '###' + str(label[i]) + '###' + str(
+        #                 pred_label[i]) + '\n'
+        #             f.write(line)
 
     acc = correct_count * 1.0 / dr_test.data_len
     print('Confusion Matrix')
@@ -210,7 +205,7 @@ def main():
     # dg_train = data_generator(args, train_data)
     # dg_valid = data_generator(args, valid_data, False)
     # dg_test = data_generator(args, test_data, False)
-    model = CRFAspectSent(args)
+    model = CNN_Gate_Aspect_Text(args)
     # model = models.__dict__[args.arch](args)
     if args.use_gpu:
         model.cuda()
@@ -219,7 +214,7 @@ def main():
     optimizer = create_opt(parameters, args)
 
     if args.training:
-        train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger)
+        train(model, dg_train, dg_valid, dg_test, optimizer, args)
     else:
         pass
 
