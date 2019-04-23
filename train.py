@@ -83,17 +83,21 @@ def save_checkpoint(save_model, i_iter, args, is_best=True):
     save_best_checkpoint(dict_model, is_best, filename)
 
 
-def train(model, dg_source_train, dg_target_train, dg_test, optimizer, args):
+def train(model, dg_source_train, dg_target_train, dg_test, optimizer, args,dg_test_eval):
     cls_loss_value = AverageMeter(10)
     f_loss_value = AverageMeter(10)
     unsupervised_loss_value = AverageMeter(10)
     best_acc = 0
+    best_f1 =0
     model.train()
     is_best = False
-    weight = torch.Tensor([0.16, 0.71, 0.13])
-    weight = 1 / weight
-    weight = (weight - torch.min(weight)) / (torch.max(weight) - torch.min(weight))
-    criterion_cls = torch.nn.CrossEntropyLoss(weight=weight.cuda())
+    # weight = torch.Tensor([0.16, 0.71, 0.13])
+    # weight = 1 / weight
+
+    # weight = (weight - torch.min(weight)) / (torch.max(weight) - torch.min(weight))
+    # criterion_cls = torch.nn.CrossEntropyLoss(weight=weight.cuda())
+    criterion_cls = torch.nn.CrossEntropyLoss(weight=None)
+
     logger.info("Start Experiment")
     loops = int(dg_source_train.data_len / args.batch_size)
     for e_ in range(args.epoch):
@@ -151,22 +155,26 @@ def train(model, dg_source_train, dg_target_train, dg_test, optimizer, args):
                                                                f_loss_value.avg,
                                                                unsupervised_loss_value.avg))
 
-        valid_acc = evaluate_test(dg_target_train, model, args)
-        logger.info("epoch {}, Validation acc: {}".format(e_, valid_acc))
-        if valid_acc > best_acc:
+        valid_acc,f1 = evaluate_test(dg_target_train, model, args,tag='valid data set')
+        logger.info("epoch {}, Validation acc: {},f1: {}".format(e_, valid_acc,f1))
+        if valid_acc > best_acc or f1 > best_f1:
             is_best = True
             best_acc = valid_acc
+            best_f1 = f1
             save_checkpoint(model, e_, args, is_best)
+            logger.info(('Test dataset acc:'))
+            test_acc,test_f1= evaluate_test(dg_test_eval, model, args,tag='test data')
+            logger.info("epoch {}, test acc: {},f1: {}".format(e_, test_acc,test_f1))
         model.train()
         is_best = False
 
 
-def evaluate_test(dr_test, model, args, sample_out=False):
+def evaluate_test(dr_test, model, args, sample_out=False,tag=''):
     mistake_samples = 'data/mistakes.txt'
     with open(mistake_samples, 'w') as f:
         f.write('Test begins...')
 
-    logger.info("Evaluting")
+    logger.info("Evaluting:{}".format(tag))
     dr_test.reset_samples()
     model.eval()
     all_counter = 0
@@ -175,8 +183,9 @@ def evaluate_test(dr_test, model, args, sample_out=False):
     pred_labels = []
     while dr_test.index < dr_test.data_len:
         sent, mask, label, sent_len, texts, targets, _ = next(dr_test.get_ids_samples())
-        _, _, _, pred_label = model.predict(sent.cuda(), mask.cuda(), sent_len.cuda())
+        _, _, _, pred_label3,pred_label1 = model.predict(sent.cuda(), mask.cuda(), sent_len.cuda())
 
+        pred_label = pred_label1
         # Compute correct predictions
         correct_count += sum(pred_label == label.cuda()).item()
 
@@ -195,11 +204,12 @@ def evaluate_test(dr_test, model, args, sample_out=False):
                     f.write(line)
 
     acc = correct_count * 1.0 / dr_test.data_len
-    print('Confusion Matrix')
-    print(confusion_matrix(true_labels, pred_labels))
-    print('f1_score:', f1_score(true_labels, pred_labels, average='macro'))
+    logger.info('Confusion Matrix')
+    print(str(confusion_matrix(true_labels, pred_labels)))
+    f1 =f1_score(true_labels, pred_labels, average='macro')
+    print('f1_score:', f1)
     # print("Test Sentiment Accuray {0}, {1}:{2}".format(acc, correct_count, all_counter))
-    return acc
+    return acc,f1
 
 
 def main():
@@ -227,21 +237,9 @@ def main():
     global best_acc
     best_acc = 0
 
-    ##Load datasets
-    # dr = data_reader(args)
-    # train_data = dr.load_data(args.train_path)
-    # valid_data = dr.load_data(args.valid_path)
-    # test_data = dr.load_data(args.test_path)
-    # logger.info("Training Samples: {}".format(len(train_data)))
-    # logger.info("Validating Samples: {}".format(len(valid_data)))
-    # logger.info("Testing Samples: {}".format(len(test_data)))
-    dg_train, dg_valid, dg_test = DataGenerator.load(DataConfig())
+    dg_train, dg_valid, dg_test,dg_test_eval = DataGenerator.load(DataConfig())
 
-    # dg_train = data_generator(args, train_data)
-    # dg_valid = data_generator(args, valid_data, False)
-    # dg_test = data_generator(args, test_data, False)
     model = Tri_RNNCNNSent(args)
-    # model = models.__dict__[args.arch](args)
     if args.use_gpu:
         model.cuda()
 
@@ -249,10 +247,10 @@ def main():
     optimizer = create_opt(parameters, args)
 
     if args.training:
-        train(model, dg_train, dg_valid, dg_test, optimizer, args)
+        train(model, dg_train, dg_valid, dg_test, optimizer, args,dg_test_eval)
     else:
         pass
 
-
 if __name__ == "__main__":
     main()
+    # dg_train, dg_valid, dg_test, dg_test_eval = DataGenerator.load(DataConfig())

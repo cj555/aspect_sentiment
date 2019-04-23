@@ -242,9 +242,10 @@ class Tri_RNNCNNSent(nn.Module):
         # sents, _ = self.cat_layer(sents, masks)
         output1, output2, output3, f_loss = self.compute_score(sents, masks, sent_lens)
 
-        pred_label = torch.max(torch.nn.functional.softmax(output3), dim=1)[1]
+        pred_label3 = torch.max(torch.nn.functional.softmax(output3), dim=1)[1]
         # Modified by Richard Sun
-        return output1, output2, output3, pred_label
+        pred_label1 = torch.max(torch.nn.functional.softmax(output1), dim=1)[1]
+        return output1, output2, output3, pred_label3,pred_label1
 
 
 def convert_mask_index(masks):

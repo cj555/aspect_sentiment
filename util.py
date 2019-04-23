@@ -10,7 +10,7 @@ import yaml
 import argparse
 import numpy as np
 import logging
-
+from sklearn.manifold import TSNE
 
 def load_yaml(file_path,section):
     parser = argparse.ArgumentParser(description='yaml')
@@ -197,3 +197,18 @@ def create_logger(name, log_file, level=logging.INFO):
     l.addHandler(fh)
     l.addHandler(sh)
     return l
+
+
+from sklearn.manifold import TSNE
+import matplotlib.pylab as plt
+def plot_tsne(arr):
+    """
+        arr = [np.array([[0, 0, 0], [0, 1, 1], [1, 0, 1], [1, 1, 1]]),
+           np.array([[0, 0, 0], [0, 1, 3], [1, 4, 1], [1, 1, 1]])]
+    :param arr:
+    :return:
+    """
+    for i,X in enumerate(arr):
+        X_embedded = TSNE(n_components=2).fit_transform(X)
+        plt.plot(X_embedded,label=i)
+    plt.savefig('tsne.png')
