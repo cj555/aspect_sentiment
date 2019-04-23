@@ -46,6 +46,79 @@ class LSTM(nn.Module):
         # batch_size*emb_dim
         return h[0]
 
+# input layer for 14
+class SimpleCat(nn.Module):
+    def __init__(self, config):
+        '''
+        Concatenate word embeddings and target embeddings
+        '''
+        super(SimpleCat, self).__init__()
+        self.config = config
+        with open(self.config.embed_path, 'rb') as f:
+            vectors = pickle.load(f).local_emb
+
+        self.local_emb = vectors
+        self.word_embed = nn.Embedding(vectors.shape[0], vectors.shape[1])
+        self.mask_embed = nn.Embedding(2, 50)
+
+        # positional embeddings
+        # n_position = 100
+        # self.position_enc = nn.Embedding(n_position, config.embed_dim, padding_idx=0)
+        # # self.position_enc.weight.data = self.position_encoding_init(n_position, config.embed_dim)
+        #
+        self.dropout = nn.Dropout(0.1)
+        #
+        # self.senti_embed = nn.Embedding(config.embed_num, 50)
+
+        # input are tensors
+    def forward(self, sent, mask, is_elmo=False):
+        '''
+        Args:
+        sent: tensor, shape(batch_size, max_len, emb_dim)
+        mask: tensor, shape(batch_size, max_len)
+        '''
+        # Modified by Richard Sun
+        # Use ELmo embedding, note we need padding
+        sent = Variable(sent)
+        mask = Variable(mask)
+
+        # Use GloVe embedding
+        if self.config.if_gpu:
+            sent, mask = sent.cuda(), mask.cuda()
+        # to embeddings
+        sent_vec = sent  # batch_siz*sent_len * dim
+        if is_elmo:
+            sent_vec = sent  # batch_siz*sent_len * dim
+        else:
+            sent_vec = self.word_embed(sent)  # batch_siz*sent_len * dim
+
+        mask_vec = self.mask_embed(mask)  # batch_size*max_len* dim
+        # print(mask_vec.size())
+
+        sent_vec = self.dropout(sent_vec)
+        # Concatenation
+        sent_vec = torch.cat([sent_vec, mask_vec], 2)
+
+        # for test
+        return sent_vec
+
+    def load_vector(self):
+        '''
+        Load pre-savedd word embeddings
+        '''
+        with open(self.config.embed_path, 'rb') as f:
+            vectors = pickle.load(f).local_emb
+
+            print("Loaded from {} with shape {}".format(self.config.embed_path, vectors.shape))
+            self.word_embed.weight = nn.Parameter(torch.FloatTensor(vectors))
+            # vectors = self.config.local_emb
+            self.word_embed.weight.data.copy_(torch.from_numpy(vectors))
+            # self.word_embed.weight.requires_grad = self.config.if_update_embed
+            self.word_embed.weight.requires_grad = False
+
+            # self.position_enc.requires_grad = self.config.if_update_embed
+            print('embeddings loaded')
+
 
 class biLSTM(nn.Module):
     def __init__(self, config):
