@@ -1,4 +1,4 @@
-# Aspect Sentiment- Tri-Learning
+# Aspect Sentiment- CRFAspectSent
 
 ###  Documentation
 
@@ -35,3 +35,22 @@ Run
 
 
 #### Reference
+
+    @InAAAI{bailin-lu:2018:AAAI2018,
+    author    = {Bailin, Wang  and  Lu, Wei},
+    title     = {Learning Latent Opinions for Aspect-level Sentiment Classification},
+    year      = {2018},
+    abstract  = {Aspect-level sentiment classification aims at detecting the sentiment expressed 
+    towards a particular target in a sentence. Based on the observation that the sentiment 
+    polarity is often related to specific spans in the given sentence, it is possible to make 
+    use of such information for better classification. On the other hand, such information 
+    can also serve as justifications associated with the predictions. We propose a segmentation 
+    attention based LSTM model which can effectively capture the structural dependencies between 
+    the target and the sentiment expressions with a linear-chain conditional random field (CRF) layer. 
+    The model simulates human’s process of inferring sentiment information when reading: when given a                
+    target, humans tend to search for surrounding relevant text spans in the sentence before making an 
+    informed decision on the underlying sentiment information. We perform sentiment classification tasks
+    on publicly available datasets on online reviews across different languages from SemEval tasks and
+    social comments from Twitter. Extensive experiments show that our model achieves the 
+    state-of-the-art performance while extracting interpretable sentiment expressions.}
+    }
