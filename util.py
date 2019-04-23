@@ -10,6 +10,7 @@ import yaml
 import argparse
 import numpy as np
 import logging
+from torch.autograd import Variable
 
 
 def load_yaml(file_path,section):
@@ -225,3 +226,18 @@ def log_sum_exp(vec_list):
     # sum along dim 0
     ret_val = max_ex_v + torch.log(torch.sum(torch.exp(tmp_mat - max_expand), 0))
     return ret_val
+
+# the input is 2d dim tensor
+# output 1d tensor
+def argmax_m(mat):
+    ret_v, ret_ind = [], []
+    m, n = mat.size()
+    for i in range(m):
+        ind_ = argmax(mat[i])
+        ret_ind.append(ind_)
+        ret_v.append(mat[i][ind_])
+    if type(ret_v[0]) == Variable or type(ret_v[0]) == torch.Tensor:
+        return ret_ind, torch.stack(ret_v)
+    else:
+        return ret_ind, torch.Tensor(ret_v)
+
