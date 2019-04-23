@@ -16,7 +16,7 @@
 
 5. Multi-class Classification without Multi-class Labels [[Paper, ICLR2019]](https://arxiv.org/pdf/1901.00544.pdf)
 
-
+6. A DIRT-T Approach to Unsupervised Domain Adaptation [[Paper, ICLR2018]](https://arxiv.org/abs/1802.08735)[[code, tensorflow]](https://github.com/RuiShu/dirt-t)
 
 
 # Other Resources
