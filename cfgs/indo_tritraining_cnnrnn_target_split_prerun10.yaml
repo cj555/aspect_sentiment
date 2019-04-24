@@ -1,5 +1,5 @@
 common:
-    exp_name: indo_trirnncnn_target_split
+    exp_name: indo_trirnncnn_target_split_prerun10
     arch: Tri_RNNCNNSent
     batch_size: 32
 
