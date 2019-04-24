@@ -204,16 +204,17 @@ def train(model, train, dev, test, optimizer, args, eval_data=None):
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
             optimizer.step()
 
+            if e_ >10:
             # for dev
-            model, unsuper_loss = unsupervised(args, criterion_cls, dev, model, optimizer, unsupervised_loss_value)
+                model, unsuper_loss = unsupervised(args, criterion_cls, dev, model, optimizer, unsupervised_loss_value)
 
-            if unsuper_loss is not None:
-                unsuper_loss_dev_each_epoch.append(unsuper_loss.data.cpu().numpy())
+                if unsuper_loss is not None:
+                    unsuper_loss_dev_each_epoch.append(unsuper_loss.data.cpu().numpy())
 
-            # for test
-            model, unsuper_loss = unsupervised(args, criterion_cls, test, model, optimizer, unsupervised_loss_value)
-            if unsuper_loss is not None:
-                unsuper_loss_test_each_epoch.append(unsuper_loss.data.cpu().numpy())
+                # for test
+                model, unsuper_loss = unsupervised(args, criterion_cls, test, model, optimizer, unsupervised_loss_value)
+                if unsuper_loss is not None:
+                    unsuper_loss_test_each_epoch.append(unsuper_loss.data.cpu().numpy())
 
                 # todo:AttributeError: 'Tensor' object has no attribute 'avg'
                 # if idx % args.print_freq == 0:
