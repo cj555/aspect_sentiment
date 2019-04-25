@@ -1,0 +1,80 @@
+common:
+    exp_name: indo_tuning_target_split_aspectcls_loss0.5
+#    exp_name: indo_tuning_random_split
+    arch: CRFAspectSent
+    batch_size: 32
+
+    #Map words to lower case
+    embed_num: 5120
+    #For elmo the emb_size is 1024
+    embed_dim: 100
+    mask_dim: 50
+    if_update_embed: True
+
+    # lstm
+    #l_hidden_size: 256
+    l_hidden_size: 256
+    l_num_layers: 2 # forward and backward
+    l_dropout: 0.3
+    threshold: 1.1
+    # penlaty
+    C1: 0.01 # CRF penalty
+    lambda_f: 0
+    C2: 0.001 #CRF penalty
+    if_reset: True
+    lambda_unsupervised: 0.5
+    lambda_balance: 0
+    opt: Adam
+    dropout: 0 # 0.3
+    epoch: 100
+    lr: 0.0001 # learning rate
+    l2: 0.001 # learning rate decay
+    adjust_every: 8
+    clip_norm: 3
+    k_fold: 6
+    print_freq: 10
+    unspervised_loss_weight: 0.1
+    vote: 'major'
+    finetune_embed: False
+    # data processing
+    if_replace: False
+    training: True
+    # traning
+    if_gpu: True
+    use_gpu: True
+    target_cls: 0.5
+    # data_path: data/2014/data.pkl
+    # dic_path: data/2014/dic.pkl
+
+    #################Restaurant
+    pretrained_embed_path: /home/chen_juan/nlp_tutorial/SA_Sent_trilearning/data/glove_indo_original.100d.txt
+    embed_path: data/vocab/local_emb.pkl
+    data_path: data/
+    source_path: data/train.xml.pkl
+    target_train_path: data/dev.xml.pkl
+    test_path: data/dev.xml.pkl
+    test_path1: data/test.xml.pkl
+
+    dic_path: data/vocab/dict.pkl
+
+#    pretrained_embed_path: /home/chen_juan/nlp_tutorial/SA_Sent_trilearning/data/glove_indo_original.100d.txt
+#    embed_path: data/indo/vocab/local_emb.pkl
+#    data_path: data/indo/
+#    source_path: data/indo/random10_keep/random_train.pkl
+#    target_train_path: data/indo/random10_keep/random_dev.pkl
+#    test_path: data/indo/random10_keep/random_dev.pkl
+#    test_path1: data/indo/random10_keep/random_test.pkl
+#
+#    dic_path: data/indo0/vocab/dict.pkl
+
+
+    model_path: data/models/source_only/
+    log_path: data/logs/
+    
+    is_stanford_nlp: False
+#    elmo_config_file: ../data/Elmo/elmo_2x4096_512_2048cnn_2xhighway_options.json
+#    elmo_weight_file: ../data/Elmo/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5
+    elmo_config_file: /home/richard/richardsun/github/data/Elmo/elmo_2x4096_512_2048cnn_2xhighway_options.json
+    elmo_weight_file: /home/richard/richardsun/github/data/Elmo/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5
+
+    snapshot_dir: checkpoints/
