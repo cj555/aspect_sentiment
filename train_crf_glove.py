@@ -140,11 +140,14 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_tra
         for idx in range(loops):
             sent_vecs, mask_vecs, label_list, sent_lens, _, target_name_list, _ = next(dg_train.get_ids_samples())
             target_name_list = [args.train_targets_cluster_ix[' '.join(x).lower()] for x in target_name_list]
-            # target_list = torch.LongTensor(target_list)
-            target_name_list = torch.FloatTensor(target_name_list)
+            # target_name_list = [args.train_targets_cluster_ix[' '.join(x).lower()] for x in target_name_list]
+
+            target_name_list = torch.LongTensor(target_name_list)
+            # target_name_list = torch.FloatTensor(target_name_list)
 
             cls_loss = model(sent_vecs.cuda(), mask_vecs.cuda(), label_list.cuda(), sent_lens.cuda(),
                              target_name_list.cuda())
+
             loss_each_epoch.append(cls_loss.data.cpu().numpy())
             cls_loss_value.update(cls_loss.item())
             model.zero_grad()
@@ -282,17 +285,17 @@ def main():
     args.train_prior1 = Kmeans_X
     args.train_targets_cluster_ix = {v: args.train_prior1[i] for i, v in enumerate(args.train_targets)}
 
-    # ncluster = 3
-    # kmeans = KMeans(n_clusters=ncluster, random_state=0).fit(Kmeans_X)
-    # args.train_targets_cluster_ix = {v:kmeans.labels_[i] for i, v in enumerate(args.train_targets)}
-    # args.clusterix2wordix = {}
-    # for i in range(ncluster):
-    #     target = sorted([k for k in args.train_targets_cluster_ix if args.train_targets_cluster_ix[k]==0])[0]
-    #     target_ix = [x[6] for x in train_data if ' '.join(x[5]).lower()==target][0]
-    #     args.clusterix2wordix[i] = target_ix
+    ncluster = 3
+    kmeans = KMeans(n_clusters=ncluster, random_state=0).fit(Kmeans_X)
+    args.train_targets_cluster_ix = {v:kmeans.labels_[i] for i, v in enumerate(args.train_targets)}
+    args.clusterix2wordix = {}
+    for i in range(ncluster):
+        target = sorted([k for k in args.train_targets_cluster_ix if args.train_targets_cluster_ix[k]==i])[0]
+        target_ix = [x[6] for x in train_data if ' '.join(x[5]).lower()==target][0]
+        args.clusterix2wordix[i] = target_ix
 
 
-    # args.train_targets_ix = {v:i for i,v in enumerate(args.train_targets)}
+    args.train_targets_ix = {v:i for i,v in enumerate(args.train_targets)}
 
 
     train_data_cp = dr.load_data(args.train_path)
