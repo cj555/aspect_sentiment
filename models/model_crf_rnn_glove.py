@@ -13,6 +13,7 @@ import numpy as np
 from Layer import SimpleCat
 from torch.nn import utils as nn_utils
 from util import *
+from data_reader_general import data_reader, data_generator
 
 
 def init_ortho(module):
@@ -76,19 +77,50 @@ class biLSTM(nn.Module):
         return unpacked
 
 
-class typeClassifier(nn.Module):
+class MetaLearner(nn.Module):
     def __init__(self, config):
         '''
         LSTM+Aspect
         '''
-        super(CRFAspectSent, self).__init__()
+        super(MetaLearner, self).__init__()
         self.config = config
-        self.cat_layer = SimpleCat(config)
-        self.cat_layer.load_vector()
-        self.bilstm = biLSTM(config)
+        self.learner = CRFAspectSent(config)
+        self.test2target_weight = nn.Linear(config.batch_size, config.aspect_size)
+        leaner_parameters = filter(lambda p: p.requires_grad, self.learner.parameters())
+        self.learner_optimizer = optim.Adam(leaner_parameters, lr=config.lr, weight_decay=config.l2)
 
-    def forward(self, sents, masks, labels, lens, target_list):
-        sents = self.cat_layer(sents, masks)
+    def forward(self, train_data, meta_train_target):
+
+        dg_meta_train = data_generator(self.config, train_data[meta_train_target])
+        sent_vecs0, mask_vecs0, label_list0, sent_lens0, _, target_name_list0, _ = next(
+            dg_meta_train.get_ids_samples())
+
+        context0 = self.bilstm(sent_vecs0, mask_vecs0)  # Batch_size*sent_len*hidden_dim
+
+        batch_size, max_len, hidden_dim = context0.size()
+        meta_scores = self.test2target_weight(context0)
+
+        target_log_probs = F.log_softmax(meta_scores, dim=1)
+
+        ## training learner
+        self.learner.train()
+        for k, idx in enumerate(self.config.aspect_name_ix):
+            if k == meta_train_target:
+                continue
+            dg_learner_train = data_generator(self.config, train_data[k])
+            sent_vecs1, mask_vecs1, label_list1, sent_lens1, _, target_name_list1, _ = next(
+                dg_learner_train.get_ids_samples())
+            weight = target_log_probs[idx]
+            leaner_loss = self.learner(sent_vecs1, mask_vecs1, label_list1, sent_lens1)
+            leaner_loss *= weight
+            self.learner.zero_grad()
+            leaner_loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.learner.parameters(), self.config.clip_norm, norm_type=2)
+            self.learner_optimizer.step()
+
+        meta_leaner_loss = self.learner(sent_vecs0, mask_vecs0, label_list0, sent_lens0)
+
+        return meta_leaner_loss
 
 
 # consits of three components
@@ -99,14 +131,13 @@ class CRFAspectSent(nn.Module):
         '''
         super(CRFAspectSent, self).__init__()
         self.config = config
-
         self.bilstm = biLSTM(config)
         self.feat2tri = nn.Linear(config.l_hidden_size, 2)
         self.inter_crf = LinearCRF(config)
         self.feat2label = nn.Linear(config.l_hidden_size, 3)
         # self.feat2target = nn.Linear(config.l_hidden_size, len(config.train_targets))
-        self.feat2target = nn.Linear(config.l_hidden_size, 3)
-        self.target_loss = nn.NLLLoss()
+        # self.feat2target = nn.Linear(config.l_hidden_size, 3)
+        # self.target_loss = nn.NLLLoss()
         # self.target_embed = nn.Embedding( len(config.train_targets), config.mask_dim)
 
 
@@ -262,7 +293,7 @@ class CRFAspectSent(nn.Module):
 
         return label_scores, best_latent_seqs
 
-    def forward(self, sents, masks, labels, lens, target_list):
+    def forward(self, sents, masks, labels, lens):
         '''
         inputs are list of list for the convenince of top CRF
         Args:
@@ -274,8 +305,7 @@ class CRFAspectSent(nn.Module):
         # scores: batch_size*label_size
         # s_prob:batch_size*sent_len
         sents = self.cat_layer(sents, masks)
-        target_log_probs,_,_= self.compute_scores(sents, masks, lens, mode='target_cls')
-        target_loss = self.target_loss(target_log_probs, target_list)
+
         scores, s_prob, target_embeding = self.compute_scores(sents, masks, lens, mode='sentiment_classifier')
 
         s_prob_norm = torch.stack([s.norm(1) for s in s_prob]).mean()
@@ -287,57 +317,14 @@ class CRFAspectSent(nn.Module):
         scores = F.log_softmax(scores, dim=1)  # Batch_size*label_size
 
         cls_loss = self.loss(scores, labels)
+
         cls_loss = cls_loss + 1e-2
 
         print('Transition', pena)
 
         print("cls loss {0} with penalty {1}".format(cls_loss.item(), norm_pen.item()))
 
-        total_loss = cls_loss + self.config.target_cls*target_loss
-        total_loss /= (1+self.config.target_cls)
-
-        return total_loss + norm_pen
-
-        # if mode == 'target_cls':
-        #     # target_prob = torch.exp(target_prob)
-        #
-        #     # target_list = target_list.type(torch.uint8)
-        #     # source_embeding_avg = target_embeding[target_list].sum(dim=0)  # being 0
-        #     # target_embeding_avg = target_embeding[~target_list].sum(dim=0)  # being 1
-        #     # # target_loss= torch.nn.KLDivLoss(size_average=False)(source_prob_avg.log(), target_prob_avg)
-        #     # # target_loss = F.kl_div(target_prob_avg, source_prob_avg)
-        #     #
-        #     # vx = source_embeding_avg - torch.mean(source_embeding_avg)
-        #     # vy = target_embeding_avg - torch.mean(target_embeding_avg)
-        #     # target_loss = 1 - torch.sum(vx * vy) / (torch.sqrt(torch.sum(vx ** 2)) * torch.sqrt(torch.sum(vy ** 2)))
-        #
-        #     # target_loss = self.sourcetarget_loss(source_embeding_avg,target_embeding_avg)
-        #     # target_loss = -target_prob_avg - source_prob_avg
-        #     # target_loss = self.sourcetarget_loss(target_prob, target_list)
-        #     # target_loss = torch.sqrt((target_prob_avg - source_prob_avg) ** 2)
-        #
-        #     target_loss =  self.target_loss(scores)
-        #     print("{0}:loss {1}".format(mode, target_loss.item()))
-        #     return target_loss
-        #
-        # elif mode == 'sentiment_classifier':
-        #
-        #     s_prob_norm = torch.stack([s.norm(1) for s in s_prob]).mean()
-        #
-        #     pena = F.relu(self.inter_crf.transitions[1, 0] - self.inter_crf.transitions[0, 0]) + \
-        #            F.relu(self.inter_crf.transitions[0, 1] - self.inter_crf.transitions[1, 1])
-        #     norm_pen = self.config.C1 * pena + self.config.C2 * s_prob_norm
-        #
-        #     scores = F.log_softmax(scores, dim=1)  # Batch_size*label_size
-        #
-        #     cls_loss = self.loss(scores, labels)
-        #     cls_loss = cls_loss + 1e-2
-        #
-        #     print('Transition', pena)
-        #
-        #     print("cls loss {0} with penalty {1}".format(cls_loss.item(), norm_pen.item()))
-        #
-        #     return cls_loss + norm_pen
+        return cls_loss + norm_pen
 
     def predict(self, sents, masks, sent_lens):
         sents = self.cat_layer(sents, masks)
