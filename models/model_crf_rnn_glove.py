@@ -91,17 +91,16 @@ class MetaLearner(nn.Module):
 
     def forward(self, train_data, meta_train_target):
 
-        dg_meta_train = data_generator(self.config, train_data[meta_train_target])
-        sent_vecs0, mask_vecs0, label_list0, sent_lens0, _, target_name_list0, _ = next(
-            dg_meta_train.get_ids_samples())
+        domain_weight, label_list0, mask_vecs0, sent_lens0, sent_vecs0 = self.predict_domain_weight(meta_train_target,
+                                                                                                    train_data)
 
-        context0 = self.bilstm(sent_vecs0, mask_vecs0)  # Batch_size*sent_len*hidden_dim
+        self.train_leaner(domain_weight, meta_train_target, train_data)
 
-        batch_size, max_len, hidden_dim = context0.size()
-        meta_scores = self.test2target_weight(context0)
+        meta_leaner_loss = self.learner(sent_vecs0, mask_vecs0, label_list0, sent_lens0)
 
-        target_log_probs = F.log_softmax(meta_scores, dim=1)
+        return meta_leaner_loss, domain_weight
 
+    def train_leaner(self, domain_weight, meta_train_target, train_data):
         ## training learner
         self.learner.train()
         for k, idx in enumerate(self.config.aspect_name_ix):
@@ -110,7 +109,7 @@ class MetaLearner(nn.Module):
             dg_learner_train = data_generator(self.config, train_data[k])
             sent_vecs1, mask_vecs1, label_list1, sent_lens1, _, target_name_list1, _ = next(
                 dg_learner_train.get_ids_samples())
-            weight = target_log_probs[idx]
+            weight = domain_weight[idx]
             leaner_loss = self.learner(sent_vecs1, mask_vecs1, label_list1, sent_lens1)
             leaner_loss *= weight
             self.learner.zero_grad()
@@ -118,9 +117,22 @@ class MetaLearner(nn.Module):
             torch.nn.utils.clip_grad_norm_(self.learner.parameters(), self.config.clip_norm, norm_type=2)
             self.learner_optimizer.step()
 
-        meta_leaner_loss = self.learner(sent_vecs0, mask_vecs0, label_list0, sent_lens0)
+    def predict(self, meta_train_target, train_data):
+        dg_meta_train = data_generator(self.config, train_data[meta_train_target])
+        sent_vecs0, mask_vecs0, label_list0, sent_lens0, _, target_name_list0, _ = next(
+            dg_meta_train.get_ids_samples())
 
-        return meta_leaner_loss
+        return self.learner.predict(sent_vecs0, mask_vecs0, sent_lens0)
+
+    def predict_domain_weight(self, meta_train_target, train_data):
+        dg_meta_train = data_generator(self.config, train_data[meta_train_target])
+        sent_vecs0, mask_vecs0, label_list0, sent_lens0, _, target_name_list0, _ = next(
+            dg_meta_train.get_ids_samples())
+        context0 = self.bilstm(sent_vecs0, mask_vecs0)  # Batch_size*sent_len*hidden_dim
+        batch_size, max_len, hidden_dim = context0.size()
+        meta_scores = self.test2target_weight(context0)
+        domain_weight = F.log_softmax(meta_scores, dim=1)
+        return domain_weight, label_list0, mask_vecs0, sent_lens0, sent_vecs0
 
 
 # consits of three components
