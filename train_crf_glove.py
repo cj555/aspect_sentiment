@@ -30,6 +30,7 @@ from matplotlib import pyplot as plt
 from collections import Counter
 from sklearn.metrics import confusion_matrix, f1_score
 from sklearn.cluster import KMeans
+import collections
 
 # Get model names in the folder
 model_names = sorted(name for name in models.__dict__
@@ -122,6 +123,49 @@ def myplot():
 
     plt.legend()
     plt.savefig('out/{0}.png'.format(args.exp_name))
+
+
+def train1(model, train_by_aspect, test_by_aspect, optimizer, args, tb_logger):
+    ## meta training
+    model.train()
+    logger.info("Start Experiment")
+    for e_ in range(args.epoch):
+        loss_each_epoch = []
+        args.curr_epoch = e_
+        if e_ % args.adjust_every == 0:
+            adjust_learning_rate(optimizer, e_, args)
+            # train weight
+            for target in train_by_aspect.keys():
+                meta_loss = model(train_by_aspect, target)
+                model.zero_grad()
+                meta_loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
+                optimizer.step()
+    # model.eval()
+    #
+    # for target in test_by_aspect.keys():
+    #     dg_learner_test = data_generator(args, train_by_aspect[target])
+    #     biglearner = CRFAspectSent(args, model.bilstm)
+    #     domain_weight,label_list0, mask_vecs0, sent_lens0, sent_vecs0 = model.predict_domain_weight(target, test_by_aspect)
+    #
+    #
+    #     for k, idx in enumerate(args.aspect_name_ix.keys()):
+    #         # idx =
+    #         dg_learner_train = data_generator(args, train_by_aspect[k])
+    #         sent_vecs1, mask_vecs1, label_list1, sent_lens1, _, target_name_list1, _ = next(
+    #             dg_learner_train.get_ids_samples())
+    #         weight = domain_weight[idx]
+
+
+
+                # leaner_loss = model.biglearner(sent_vecs1, mask_vecs1, label_list1, sent_lens1)
+                # leaner_loss *= weight
+                # model.biglearner.zero_grad()
+                # leaner_loss.backward()
+                # torch.nn.utils.clip_grad_norm_(biglearner.parameters(), args.clip_norm, norm_type=2)
+                #
+                # test_acc, test_f1 = evaluate_test(dg_test, model, args)
+                # logger.info("epoch {}, Validation acc: {}".format(e_, valid_acc))
 
 
 def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_train_cp):
@@ -268,83 +312,40 @@ def main():
     args.valid_path = args.test_path
     args.test_path = args.test_path1
 
-    train_data = dr.load_data(args.train_path)
+    train_data, train_by_aspect = get_data_dict(dr, path=args.source_path)
+    _, dev_by_aspect = get_data_dict(dr, path=args.test_path)
+    _, test_by_aspect = get_data_dict(dr, path=args.test_path1)
+    args.aspect_size = len(train_by_aspect.keys())
+    args.aspect_name = list(train_by_aspect.keys())
+    args.aspect_name_ix = {k: i for i, k in enumerate(args.aspect_name)}
 
-    args.train_targets = list(set([' '.join(x[5]).lower() for x in train_data]))
-    args.target_proxy = [x for x in train_data if len(x[6]) == 1][0][5:7]
-
-    polarities = []
-    for t in args.train_targets:
-        polarity = [x[2] for x in train_data if ' '.join(x[5]).lower() == t]
-        l = len(polarity)
-        polarity = Counter(polarity)
-        polarity = [polarity[0] / l, polarity[1] / l, polarity[2] / l]
-        polarities.append(polarity)
-
-    Kmeans_X = np.array(polarities)
-    args.train_prior1 = Kmeans_X
-    args.train_targets_cluster_ix = {v: args.train_prior1[i] for i, v in enumerate(args.train_targets)}
-
-    ncluster = 3
-    kmeans = KMeans(n_clusters=ncluster, random_state=0).fit(Kmeans_X)
-    args.train_targets_cluster_ix = {v:kmeans.labels_[i] for i, v in enumerate(args.train_targets)}
-    args.clusterix2wordix = {}
-    for i in range(ncluster):
-        target = sorted([k for k in args.train_targets_cluster_ix if args.train_targets_cluster_ix[k]==i])[0]
-        target_ix = [x[6] for x in train_data if ' '.join(x[5]).lower()==target][0]
-        args.clusterix2wordix[i] = target_ix
-
-
-    args.train_targets_ix = {v:i for i,v in enumerate(args.train_targets)}
-
-
-    train_data_cp = dr.load_data(args.train_path)
-    valid_data = dr.load_data(args.valid_path)
-    test_data = dr.load_data(args.test_path)
-
-    ## replace all data target to the same
-    # train_data_new = []
-    # train_data = format_target_proxy(train_data)
-    # train_data_cp = format_target_proxy(train_data_cp)
-    # valid_data = format_target_proxy(valid_data)
-    # test_data = format_target_proxy(test_data)
-
-
-    logger.info("Training Samples: {}".format(len(train_data)))
-    logger.info("Validating Samples: {}".format(len(valid_data)))
-    logger.info("Testing Samples: {}".format(len(test_data)))
-
-    dg_train = data_generator(args, train_data)
-    dg_train_cp = data_generator(args, train_data_cp, False)
-    dg_valid = data_generator(args, valid_data, False)
-    dg_test = data_generator(args, test_data, False)
 
     model = models.__dict__[args.arch](args)
     parameters = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = create_opt(parameters, args)
 
-    # twitter_data = dr.load_data('data/tweets/SemEval2017-task4-train.pkl')
-    #
-    # logger.info("twitter Samples: {}".format(len(twitter_data)))
-    # # dg_valid2 = data_generator(args, train_data,False)
-    # dg_twitter = data_generator(args, twitter_data)
 
     if args.use_gpu:
         model.cuda()
 
     if args.training:
-        # args.epoch = args.epoch // 3
-        train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_train_cp)
-
-        # model = util.loadModel(model, args.snapshot_dir + '/model_best.pth.tar')
-        # args.epoch = args.epoch * 3
-        # train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger,dg_train_cp)
+        # train(model, train_by_aspect, test_by_aspect, optimizer, args, tb_logger)
+        train1(model, train_by_aspect, test_by_aspect, optimizer, args, tb_logger)
     else:
         pass
 
-    print('test performance!!!!')
-    model = util.loadModel(model, args.snapshot_dir + '/model_best.pth.tar')
-    evaluate_test(dg_test, model, args, sample_out=False, is_validate=False)
+    # print('test performance!!!!')
+    # model = util.loadModel(model, args.snapshot_dir + '/model_best.pth.tar')
+    # evaluate_test(dg_test, model, args, sample_out=False, is_validate=False)
+
+
+def get_data_dict(dr, path):
+    data = dr.load_data(path)
+    data_by_apsect = collections.defaultdict(list)
+    for d in data:
+        aspect = " ".join(d[5]).lower()
+        data_by_apsect[aspect].append(d)
+    return data, data_by_apsect
 
 
 def format_target_proxy(train_data):

@@ -73,8 +73,38 @@ class biLSTM(nn.Module):
         # Unpack the tensor, get the output for varied-size sentences
         # padding with zeros
         unpacked, _ = nn_utils.rnn.pad_packed_sequence(lstm_out, batch_first=True)
-        # batch * sent_l * 2 * hidden_states 
-        return unpacked
+        # batch * sent_l * 2 * hidden_states
+
+        # Extract the outputs for the last timestep of each example
+        idx = (torch.LongTensor(seq_lengths) - 1).view(-1, 1).expand(
+            len(seq_lengths), unpacked.size(2))
+
+        #batch first
+        time_dimension = 1 # if batch_first else 0
+        idx = idx.unsqueeze(time_dimension)
+        if unpacked.is_cuda:
+            idx = idx.cuda(unpacked.data.get_device())
+        # Shape: (batch_size, rnn_hidden_dim)
+        last_output = unpacked.gather(
+            time_dimension, Variable(idx)).squeeze(time_dimension)
+
+        return unpacked,last_output
+
+
+class SimpleLearner(nn.Module):
+    def __init__(self, config):
+        super(SimpleLearner, self).__init__()
+        self.feat2label = nn.Linear(config.l_hidden_size, 3)
+        weight = None
+        self.loss = nn.NLLLoss(weight=weight)
+
+    def forward(self, context, labels):
+        # context = self.bilstm(sents, lens)  # Batch_size*sent_len*hidden_dim
+        # batch_size, max_len, hidden_dim = context.size()
+        scores = self.feat2label(context)
+        scores = F.log_softmax(scores, dim=1)  # Batch_size*label_size
+        cls_loss = self.loss(scores, labels.cuda())
+        return cls_loss
 
 
 class MetaLearner(nn.Module):
@@ -84,66 +114,69 @@ class MetaLearner(nn.Module):
         '''
         super(MetaLearner, self).__init__()
         self.config = config
-        self.learner = CRFAspectSent(config)
-        self.test2target_weight = nn.Linear(config.batch_size, config.aspect_size)
-        leaner_parameters = filter(lambda p: p.requires_grad, self.learner.parameters())
-        self.learner_optimizer = optim.Adam(leaner_parameters, lr=config.lr, weight_decay=config.l2)
+        self.bilstm = biLSTM(config)
+        self.simplelearner = SimpleLearner(config)
+        self.test2target_weight = nn.Linear(config.l_hidden_size, config.aspect_size*2)
+        leaner_parameters = filter(lambda p: p.requires_grad, self.simplelearner.parameters())
+        self.simpl_learner_optimizer = optim.Adam(leaner_parameters, lr=config.lr, weight_decay=config.l2)
+
+        self.cat_layer = SimpleCat(config)
+        self.cat_layer.load_vector()
 
     def forward(self, train_data, meta_train_target):
 
         domain_weight, label_list0, mask_vecs0, sent_lens0, sent_vecs0 = self.predict_domain_weight(meta_train_target,
                                                                                                     train_data)
+        self.train_simple_leaner(domain_weight, meta_train_target, train_data)
 
-        self.train_leaner(domain_weight, meta_train_target, train_data)
+        meta_leaner_loss = self.simplelearner(sent_vecs0, mask_vecs0, label_list0, sent_lens0)
 
-        meta_leaner_loss = self.learner(sent_vecs0, mask_vecs0, label_list0, sent_lens0)
+        return meta_leaner_loss
 
-        return meta_leaner_loss, domain_weight
-
-    def train_leaner(self, domain_weight, meta_train_target, train_data):
+    def train_simple_leaner(self, domain_weight, meta_train_target, train_data):
         ## training learner
-        self.learner.train()
-        for k, idx in enumerate(self.config.aspect_name_ix):
+        self.simplelearner.train()
+        for idx, k in enumerate(self.config.aspect_name_ix.keys()):
             if k == meta_train_target:
                 continue
             dg_learner_train = data_generator(self.config, train_data[k])
             sent_vecs1, mask_vecs1, label_list1, sent_lens1, _, target_name_list1, _ = next(
                 dg_learner_train.get_ids_samples())
-            weight = domain_weight[idx]
-            leaner_loss = self.learner(sent_vecs1, mask_vecs1, label_list1, sent_lens1)
+            label_list1 = torch.LongTensor(label_list1)
+            weight = torch.mean(domain_weight[:,idx])
+            sent_vecs1 = self.cat_layer(sent_vecs1, mask_vecs1)
+            _,context1 = self.bilstm(sent_vecs1, sent_lens1)  # Batch_size*hidden_dim, last hidden states
+            batch_size, hidden_dim = context1.size()
+
+            leaner_loss = self.simplelearner(context1, label_list1)
             leaner_loss *= weight
-            self.learner.zero_grad()
-            leaner_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.learner.parameters(), self.config.clip_norm, norm_type=2)
-            self.learner_optimizer.step()
-
-    def predict(self, meta_train_target, train_data):
-        dg_meta_train = data_generator(self.config, train_data[meta_train_target])
-        sent_vecs0, mask_vecs0, label_list0, sent_lens0, _, target_name_list0, _ = next(
-            dg_meta_train.get_ids_samples())
-
-        return self.learner.predict(sent_vecs0, mask_vecs0, sent_lens0)
+            self.simplelearner.zero_grad()
+            leaner_loss.backward(retain_graph=True)
+            torch.nn.utils.clip_grad_norm_(self.simplelearner.parameters(), self.config.clip_norm, norm_type=2)
+            self.simpl_learner_optimizer.step()
 
     def predict_domain_weight(self, meta_train_target, train_data):
         dg_meta_train = data_generator(self.config, train_data[meta_train_target])
         sent_vecs0, mask_vecs0, label_list0, sent_lens0, _, target_name_list0, _ = next(
             dg_meta_train.get_ids_samples())
-        context0 = self.bilstm(sent_vecs0, mask_vecs0)  # Batch_size*sent_len*hidden_dim
-        batch_size, max_len, hidden_dim = context0.size()
+        sent_vecs0 = self.cat_layer(sent_vecs0, mask_vecs0)
+        _,context0 = self.bilstm(sent_vecs0, sent_lens0)  # Batch_size*hidden_dim, last hidden states
+        batch_size, hidden_dim = context0.size()
         meta_scores = self.test2target_weight(context0)
-        domain_weight = F.log_softmax(meta_scores, dim=1)
+        domain_weight = F.softmax(meta_scores.view(meta_scores.shape[0],meta_scores.shape[1]//2,2),dim=2)[:,:,0]
         return domain_weight, label_list0, mask_vecs0, sent_lens0, sent_vecs0
 
 
 # consits of three components
 class CRFAspectSent(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, bilstm):
         '''
         LSTM+Aspect
         '''
         super(CRFAspectSent, self).__init__()
         self.config = config
-        self.bilstm = biLSTM(config)
+        # self.bilstm = biLSTM(config)
+        self.bilstm = bilstm
         self.feat2tri = nn.Linear(config.l_hidden_size, 2)
         self.inter_crf = LinearCRF(config)
         self.feat2label = nn.Linear(config.l_hidden_size, 3)
