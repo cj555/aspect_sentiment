@@ -147,8 +147,8 @@ class MetaLearner(nn.Module):
             sent_vecs1 = self.cat_layer(sent_vecs1, mask_vecs1)
             _, context1 = self.bilstm(sent_vecs1, sent_lens1)  # Batch_size*hidden_dim, last hidden states
             batch_size, hidden_dim = context1.size()
-            
-            print(meta_train_target, weight)
+
+            print(meta_train_target, k, weight)
             leaner_loss = self.simplelearner(context1, label_list1)
             leaner_loss *= weight
             self.simplelearner.zero_grad()
