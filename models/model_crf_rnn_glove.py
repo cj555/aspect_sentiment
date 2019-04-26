@@ -147,7 +147,8 @@ class MetaLearner(nn.Module):
             sent_vecs1 = self.cat_layer(sent_vecs1, mask_vecs1)
             _, context1 = self.bilstm(sent_vecs1, sent_lens1)  # Batch_size*hidden_dim, last hidden states
             batch_size, hidden_dim = context1.size()
-
+            
+            print(meta_train_target, weight)
             leaner_loss = self.simplelearner(context1, label_list1)
             leaner_loss *= weight
             self.simplelearner.zero_grad()
@@ -165,6 +166,7 @@ class MetaLearner(nn.Module):
         batch_size, hidden_dim = context0.size()
         meta_scores = self.test2target_weight(context0)
         domain_weight = F.softmax(meta_scores.view(meta_scores.shape[0], meta_scores.shape[1] // 2, 2), dim=2)[:, :, 0]
+
         return domain_weight, label_list0, context0
 
 
