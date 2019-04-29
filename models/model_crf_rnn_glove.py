@@ -116,7 +116,7 @@ class MetaLearner(nn.Module):
         self.config = config
         self.bilstm = biLSTM(config)
         self.simplelearner = SimpleLearner(config)
-        self.test2target_weight = nn.Linear(config.l_hidden_size, config.aspect_size * 2)
+        self.test2target_weight = nn.Linear(config.l_hidden_size, config.aspect_size)
         leaner_parameters = filter(lambda p: p.requires_grad, self.simplelearner.parameters())
         self.simpl_learner_optimizer = optim.Adam(leaner_parameters, lr=config.lr, weight_decay=config.l2)
 
@@ -165,8 +165,8 @@ class MetaLearner(nn.Module):
         _, context0 = self.bilstm(sent_vecs0, sent_lens0)  # Batch_size*hidden_dim, last hidden states
         batch_size, hidden_dim = context0.size()
         meta_scores = self.test2target_weight(context0)
-        domain_weight = F.softmax(meta_scores.view(meta_scores.shape[0], meta_scores.shape[1] // 2, 2), dim=2)[:, :, 0]
-
+        # domain_weight = F.softmax(meta_scores.view(meta_scores.shape[0], meta_scores.shape[1] // 2, 2), dim=2)[:, :, 0]
+        domain_weight = F.softmax(meta_scores,dim=1)*self.config.aspect_size
         return domain_weight, label_list0, context0
 
 
