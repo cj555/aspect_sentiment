@@ -129,7 +129,8 @@ def train1(model, train_by_aspect, test_by_aspect, optimizer, args, tb_logger):
     ## meta training
     model.train()
     logger.info("Start Experiment")
-    for e_ in range(args.epoch):
+    final_bigmodel = {}
+    for e_ in range(args.epoch)[:1]:
         loss_each_epoch = []
         args.curr_epoch = e_
         if e_ % args.adjust_every == 0:
@@ -141,31 +142,33 @@ def train1(model, train_by_aspect, test_by_aspect, optimizer, args, tb_logger):
                 meta_loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
                 optimizer.step()
-    # model.eval()
-    #
-    # for target in test_by_aspect.keys():
-    #     dg_learner_test = data_generator(args, train_by_aspect[target])
-    #     biglearner = CRFAspectSent(args, model.bilstm)
-    #     domain_weight,label_list0, mask_vecs0, sent_lens0, sent_vecs0 = model.predict_domain_weight(target, test_by_aspect)
-    #
-    #
-    #     for k, idx in enumerate(args.aspect_name_ix.keys()):
-    #         # idx =
-    #         dg_learner_train = data_generator(args, train_by_aspect[k])
-    #         sent_vecs1, mask_vecs1, label_list1, sent_lens1, _, target_name_list1, _ = next(
-    #             dg_learner_train.get_ids_samples())
-    #         weight = domain_weight[idx]
 
+    model.eval()
 
+    for target in test_by_aspect.keys():
+        dg_learner_test = data_generator(args, test_by_aspect[target])
+        biglearner = models.__dict__['CRFAspectSent'](args, model.bilstm.cuda())
+        biglearner.cuda()
+        biglearner.train()
+        domain_weight,label_list0, _ = model.predict_domain_weight(target, test_by_aspect)
 
-                # leaner_loss = model.biglearner(sent_vecs1, mask_vecs1, label_list1, sent_lens1)
-                # leaner_loss *= weight
-                # model.biglearner.zero_grad()
-                # leaner_loss.backward()
-                # torch.nn.utils.clip_grad_norm_(biglearner.parameters(), args.clip_norm, norm_type=2)
-                #
-                # test_acc, test_f1 = evaluate_test(dg_test, model, args)
-                # logger.info("epoch {}, Validation acc: {}".format(e_, valid_acc))
+        domain_weight = (domain_weight - torch.min(domain_weight)) / (torch.max(domain_weight) - torch.min(domain_weight))
+        for idx, k in enumerate(args.aspect_name_ix.keys()):
+            dg_learner_train = data_generator(args, train_by_aspect[k])
+            sent_vecs1, mask_vecs1, label_list1, sent_lens1, _, target_name_list1, _ = next(
+                dg_learner_train.get_ids_samples())
+            label_list1 = torch.LongTensor(label_list1)
+            # weight = domain_weight[idx]
+            weight = torch.mean(domain_weight[:, idx])
+            leaner_loss = biglearner(sent_vecs1.cuda(), mask_vecs1.cuda(), label_list1.cuda(), sent_lens1.cuda())
+            leaner_loss *= (0.5+weight)
+            biglearner.zero_grad()
+            leaner_loss.backward(retain_graph=True)
+            torch.nn.utils.clip_grad_norm_(biglearner.parameters(), args.clip_norm, norm_type=2)
+
+        dg_learner_test_eval = data_generator(args, test_by_aspect[target],False)
+        test_acc, test_f1 = evaluate_test(dg_learner_test_eval, biglearner, args)
+        print('test target domain:{0},acc:{1},f1,{2}'.format(target,test_acc,test_f1))
 
 
 def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_train_cp):

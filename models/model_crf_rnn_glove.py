@@ -76,7 +76,7 @@ class biLSTM(nn.Module):
         # batch * sent_l * 2 * hidden_states
 
         # Extract the outputs for the last timestep of each example
-        idx = (torch.LongTensor(seq_lengths) - 1).view(-1, 1).expand(
+        idx = (torch.LongTensor(seq_lengths.cpu()) - 1).view(-1, 1).expand(
             len(seq_lengths), unpacked.size(2))
 
         # batch first
@@ -116,7 +116,9 @@ class MetaLearner(nn.Module):
         self.config = config
         self.bilstm = biLSTM(config)
         self.simplelearner = SimpleLearner(config)
-        self.test2target_weight = nn.Linear(config.l_hidden_size, config.aspect_size)
+        self.test2target_weight = nn.Linear(config.l_hidden_size, config.aspect_size*2)
+        # self.test2target_weight.weight = torch.nn.Parameter(torch.one(config.l_hidden_size, config.aspect_size))
+
         leaner_parameters = filter(lambda p: p.requires_grad, self.simplelearner.parameters())
         self.simpl_learner_optimizer = optim.Adam(leaner_parameters, lr=config.lr, weight_decay=config.l2)
 
@@ -144,13 +146,14 @@ class MetaLearner(nn.Module):
                 dg_learner_train.get_ids_samples())
             label_list1 = torch.LongTensor(label_list1)
             weight = torch.mean(domain_weight[:, idx])
+            # weight = domain_weight[idx]
             sent_vecs1 = self.cat_layer(sent_vecs1, mask_vecs1)
             _, context1 = self.bilstm(sent_vecs1, sent_lens1)  # Batch_size*hidden_dim, last hidden states
             batch_size, hidden_dim = context1.size()
 
             print(meta_train_target, k, weight)
             leaner_loss = self.simplelearner(context1, label_list1)
-            leaner_loss *= weight
+            leaner_loss *= (0.5+weight)
             self.simplelearner.zero_grad()
             leaner_loss.backward(retain_graph=True)
             torch.nn.utils.clip_grad_norm_(self.simplelearner.parameters(), self.config.clip_norm, norm_type=2)
@@ -165,8 +168,10 @@ class MetaLearner(nn.Module):
         _, context0 = self.bilstm(sent_vecs0, sent_lens0)  # Batch_size*hidden_dim, last hidden states
         batch_size, hidden_dim = context0.size()
         meta_scores = self.test2target_weight(context0)
-        # domain_weight = F.softmax(meta_scores.view(meta_scores.shape[0], meta_scores.shape[1] // 2, 2), dim=2)[:, :, 0]
-        domain_weight = F.softmax(meta_scores,dim=1)*self.config.aspect_size
+        domain_weight = F.softmax(meta_scores.view(meta_scores.shape[0], meta_scores.shape[1] // 2, 2), dim=2)[:, :, 0]
+        # domain_weight = F.softmax(meta_scores,dim=1)*self.config.aspect_size
+        # domain_weight = F.softmax(torch.sum(meta_scores,dim=0))*self.config.aspect_size
+
         return domain_weight, label_list0, context0
 
 
@@ -212,7 +217,7 @@ class CRFAspectSent(nn.Module):
         '''
 
         # Context embeddings
-        context = self.bilstm(sents, lens)  # Batch_size*sent_len*hidden_dim
+        context,_ = self.bilstm(sents, lens)  # Batch_size*sent_len*hidden_dim
 
         # target_scores = self.feat2target(context[:,-1,:])
         # target_log_probs = F.log_softmax(target_scores,dim=1)
@@ -292,7 +297,7 @@ class CRFAspectSent(nn.Module):
         lens: batch_size
         '''
 
-        context = self.bilstm(sents, lens)  # Batch_size*sent_len*hidden_dim
+        context,_ = self.bilstm(sents, lens)  # Batch_size*sent_len*hidden_dim
         batch_size, max_len, hidden_dim = context.size()
         # Target embeddings
         # Find target indices, a list of indices
