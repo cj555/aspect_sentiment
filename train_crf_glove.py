@@ -130,7 +130,7 @@ def train1(model, train_by_aspect, test_by_aspect, optimizer, args, tb_logger):
     model.train()
     logger.info("Start Experiment")
     final_bigmodel = {}
-    for e_ in range(args.epoch)[:1]:
+    for e_ in range(args.epoch)[:0]:
         loss_each_epoch = []
         args.curr_epoch = e_
         if e_ % args.adjust_every == 0:
@@ -151,7 +151,7 @@ def train1(model, train_by_aspect, test_by_aspect, optimizer, args, tb_logger):
         biglearner.cuda()
         biglearner.train()
 
-        for e_ in range(args.epoch)[:1]:
+        for e_ in range(args.epoch)[:0]:
             domain_weight, label_list0, _ = model.predict_domain_weight(target, test_by_aspect)
 
             for idx, k in enumerate(args.aspect_name_ix.keys()):
@@ -239,18 +239,25 @@ def evaluate_test(model_dict, test_by_aspect, args, sample_out=False, is_validat
     all_labels = []
 
     for target in model_dict:
+        # if target!='obama':continue
         model = model_dict[target]
         dr_test = data_generator(args, test_by_aspect[target], False)
         dr_test.reset_samples()
         model.eval()
         all_counter = 0
         correct_count = 0
-        print("transitions matrix ", model.inter_crf.transitions.data)
+        print("========target {0} transitions matrix ".format(target, model.inter_crf.transitions.data))
 
         while dr_test.index < dr_test.data_len:
-            sent, mask, label, sent_len, texts, targets, _ = next(dr_test.get_ids_samples())
+
+            try:
+                sent, mask, label, sent_len, texts, targets, _ = next(dr_test.get_ids_samples())
+            except:
+                print('except:',dr_test.index)
+                break
+
             pred_label, best_seq = model.predict(sent.cuda(), mask.cuda(), sent_len.cuda())
-            # print(pred_label)
+            print(pred_label)
             # Compute correct predictions
             correct_count += sum(pred_label == label.cuda()).item()
 
