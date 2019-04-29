@@ -130,7 +130,7 @@ def train1(model, train_by_aspect, test_by_aspect, optimizer, args, tb_logger):
     model.train()
     logger.info("Start Experiment")
     final_bigmodel = {}
-    for e_ in range(args.epoch)[:0]:
+    for e_ in range(args.epoch):
         loss_each_epoch = []
         args.curr_epoch = e_
         if e_ % args.adjust_every == 0:
@@ -146,14 +146,17 @@ def train1(model, train_by_aspect, test_by_aspect, optimizer, args, tb_logger):
     model.eval()
 
     for target in test_by_aspect.keys():
-        biglearner = models.__dict__['CRFAspectSent'](args, model.bilstm.cuda())
+        model.bilstm.train()
+        biglearner = models.__dict__['CRFAspectSent'](args, model.bilstm)
         final_bigmodel[target] = biglearner
-        biglearner.cuda()
-        biglearner.train()
 
-        for e_ in range(args.epoch)[:0]:
+
+    for e_ in range(args.epoch):
+        for target in test_by_aspect.keys():
             domain_weight, label_list0, _ = model.predict_domain_weight(target, test_by_aspect)
-
+            biglearner = final_bigmodel[target]
+            biglearner.cuda()
+            biglearner.train()
             for idx, k in enumerate(args.aspect_name_ix.keys()):
                 dg_learner_train = data_generator(args, train_by_aspect[k])
                 sent_vecs1, mask_vecs1, label_list1, sent_lens1, _, target_name_list1, _ = next(
@@ -168,7 +171,8 @@ def train1(model, train_by_aspect, test_by_aspect, optimizer, args, tb_logger):
                 torch.nn.utils.clip_grad_norm_(biglearner.parameters(), args.clip_norm, norm_type=2)
 
         # dg_learner_test_eval = data_generator(args, test_by_aspect[target],False)
-    test_acc, test_f1 = evaluate_test(final_bigmodel, test_by_aspect, args)
+        print('epoch:{0}'.format(e_))
+        test_acc, test_f1 = evaluate_test(final_bigmodel, test_by_aspect, args)
         # print('test target domain:{0},acc:{1},f1,{2}'.format(target,test_acc,test_f1))
 
 
@@ -244,6 +248,7 @@ def evaluate_test(model_dict, test_by_aspect, args, sample_out=False, is_validat
         dr_test = data_generator(args, test_by_aspect[target], False)
         dr_test.reset_samples()
         model.eval()
+        model.bilstm.eval()
         all_counter = 0
         correct_count = 0
         print("========target {0} transitions matrix ".format(target, model.inter_crf.transitions.data))
