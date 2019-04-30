@@ -18,6 +18,14 @@
 
 6. A DIRT-T Approach to Unsupervised Domain Adaptation [[Paper, ICLR2018]](https://arxiv.org/abs/1802.08735)[[code, tensorflow]](https://github.com/RuiShu/dirt-t)
 
+7. LEARNING DEEP REPRESENTATIONS BY MUTUAL INFORMATION ESTIMATION AND MAXIMIZATION [[Paper, ICLR2019]](https://arxiv.org/pdf/1808.06670.pdf)
+
+8. Unsupervised Learning by Predicting Noise [[Paper, ICML2017]](https://arxiv.org/pdf/1704.05310.pdf) [[Code, Lua]](https://github.com/facebookresearch/noise-as-targets)
+
+## Survey On Graph neural network
+
+1. How Powerful are Graph Neural Networks? [[Paper, ICLR2019]](https://openreview.net/pdf?id=ryGs6iA5Km)
+  >> This paper uses Weisfeiler-Lehman test to measure the expressive power of GNN variants such as GCN and GraphSAGE and found that the above variants that map different neighborhoods to the same representations, hense not maximally powerful GNNs. The authors then propose GIN and then measure the overfitting on node and graph classification tasks. Different GNNs follow a different negithborhood aggregation strategy namely aggregate and combine function in eq (2.1)
 
 
 # Other Resources
