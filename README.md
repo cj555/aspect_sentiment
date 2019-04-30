@@ -28,7 +28,8 @@
 10. Learning Domain Representation for Multi-Domain Sentiment
 Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sentiment.pdf) [[Code,tensorflow]](https://github.com/leuchine/multi-domain-sentiment/blob/master/multi_view_domain_embedding_memory_adversarial.py)
 
- 
+11. Aspect-augmented Adversarial Networks for Domain Adaptation [[Paper, ACL2017]](https://aclweb.org/anthology/Q17-1036)
+[[Code, theano]](https://github.com/yuanzh/aspect_adversarial)
 
 ## Survey On Graph neural network
 
