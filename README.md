@@ -24,6 +24,10 @@
  >> In supervised settings, the learning process is to find the optimal functions to minimize the distance between features and targets. In unsupervised settings, the targets representation is missing. In this paper, the target Y = PC. where P is a Assignment matrix (only zeror or one)and C is a predefined features. For C, this paper uses uniformly samples from L2 unit spheres. The author explains that canonical basis's underlying assumption that each image belongs to one catergory is too strong is this task.  
 
 9. META-LEARNING UPDATE RULES FOR UNSUPERVISED REPRESENTATION LEARNING [[Paper, ICLR2019]](https://openreview.net/pdf?id=HkNDsiC9KQ)
+
+10. Learning Domain Representation for Multi-Domain Sentiment
+Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sentiment.pdf) [[Code,tensorflow]](https://github.com/leuchine/multi-domain-sentiment/blob/master/multi_view_domain_embedding_memory_adversarial.py)
+
  
 
 ## Survey On Graph neural network
