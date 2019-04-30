@@ -31,6 +31,7 @@ path_tweet = 'cfgs/tweets/config_crf_glove_tweets.yaml'
 path_laptop = 'cfgs/laptop/config_crf_cnn_glove_laptop.yaml'
 path_res = 'cfgs/config_crf_glove_res.yaml'
 path_indo = 'cfgs/indo/config_crf_glove_indo_preprocessed.yaml'
+path_eng =
 
 files = [path_indo]
 parser = argparse.ArgumentParser(description='TSA')
