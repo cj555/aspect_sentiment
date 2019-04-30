@@ -21,6 +21,7 @@ import argparse
 from torch import optim
 from sklearn.metrics import confusion_matrix, f1_score, recall_score, precision_score
 from model_batch_crf_glove import AspectSent
+import glob
 
 # Get model names in the folder
 # model_names = sorted(name for name in models.__dict__
@@ -196,7 +197,7 @@ def evaluate_test(dr_test, model, args, sample_out=False):
     return acc, f1
 
 
-def main():
+def main(train_path,valid_path,test_path):
     """ Create the model and start the training."""
     for file in files:
         with open(file) as f:
@@ -224,9 +225,17 @@ def main():
 
         ##Load datasets
         dr = data_reader(args)
+        args.train_path = train_path
+        args.valid_path = valid_path
+        args.test_path = test_path
         train_data = dr.load_data(args.train_path)
         valid_data = dr.load_data(args.valid_path)
         test_data = dr.load_data(args.test_path)
+
+        # train_data = dr.load_data(train_path)
+        # valid_data = dr.load_data(valid_path)
+        # test_data = dr.load_data(test_path)
+
         logger.info("Training Samples: {}".format(len(train_data)))
         logger.info("Validating Samples: {}".format(len(valid_data)))
         logger.info("Testing Samples: {}".format(len(test_data)))
@@ -256,4 +265,23 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    data_path = 'eng_glove_preprocessed/'
+    test_fi = [x for x in glob.glob(('{0}/processed_*test*').format(data_path))]
+    train_fi = [x for x in glob.glob(('{0}/processed_*train*').format(data_path))]
+    exp = 0
+    for traf in train_fi:
+        train_key = traf.split('/')[-1].split('_')[1]
+        for valid in test_fi:
+            valid_key = valid.split('/')[-1].split('_')[1]
+            for test in test_fi:
+                test_key = test.split('/')[-1].split('_')[1]
+                if valid != test and train_key!=test_key and train_key!=valid_key and valid_key!=train_key:
+                    exp+=1
+                    print('============Exp:{3}\ntraining:{0}\nvalid:{1}\ntest:{2}'.format(traf, valid, test, exp))
+                    main(train_path=traf, valid_path=valid, test_path=test)
+
+
+    pass
+
+
+    # main()

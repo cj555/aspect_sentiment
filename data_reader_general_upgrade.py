@@ -508,7 +508,8 @@ class data_reader:
             data = self.dh.text2ids(data, word2id, self.is_training)
             data_batch = self.dh.to_batches(data)
             # Save each processed data
-            self.save_data(data_batch, 'processed_{0}_{1}.pkl'.format(self.config.data_path, name))
+            self.save_data(data_batch,
+                           '{0}/processed_{1}.pkl'.format(self.config.data_path, name.split('/')[-1].split('.')[0]))
 
             self.UNK_ID = self.dh.UNK_ID
             self.PAD_ID = self.dh.PAD_ID
