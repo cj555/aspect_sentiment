@@ -25,6 +25,7 @@ common:
     lambda_balance: 0
     opt: Adam
     dropout: 0.3 # 0.3
+    dropout2: 0.3
     epoch: 30
     lr: 0.0001 # learning rate
     l2: 0.001 # learning rate decay

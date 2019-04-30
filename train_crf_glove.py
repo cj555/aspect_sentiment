@@ -23,8 +23,8 @@ from sklearn.metrics import confusion_matrix, f1_score, recall_score, precision_
 from model_batch_crf_glove import AspectSent
 
 # Get model names in the folder
-model_names = sorted(name for name in models.__dict__
-                     if name.islower() and not name.startswith("__") and callable(models.__dict__[name]))
+# model_names = sorted(name for name in models.__dict__
+#                      if name.islower() and not name.startswith("__") and callable(models.__dict__[name]))
 
 # Set default parameters of training
 path_tweet = 'cfgs/tweets/config_crf_glove_tweets.yaml'
