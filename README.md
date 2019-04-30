@@ -22,7 +22,8 @@
 
 8. Unsupervised Learning by Predicting Noise [[Paper, ICML2017]](https://arxiv.org/pdf/1704.05310.pdf) [[Code, Lua]](https://github.com/facebookresearch/noise-as-targets)
  >> In supervised settings, the learning process is to find the optimal functions to minimize the distance between features and targets. In unsupervised settings, the targets representation is missing. In this paper, the target Y = PC. where P is a Assignment matrix (only zeror or one)and C is a predefined features. For C, this paper uses uniformly samples from L2 unit spheres. The author explains that canonical basis's underlying assumption that each image belongs to one catergory is too strong is this task.  
- 
+
+9. META-LEARNING UPDATE RULES FOR UNSUPERVISED REPRESENTATION LEARNING [[Paper, ICLR2019]](https://openreview.net/pdf?id=HkNDsiC9KQ)
  
 
 ## Survey On Graph neural network
