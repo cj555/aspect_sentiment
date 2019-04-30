@@ -66,6 +66,9 @@ class dataHelper():
         import pandas as pd
         data = pd.read_csv(file_name)
         data_num = data.shape[0]
+        if 'mitchell' in file_name.lower():
+            data = data.rename(columns={"Tweet": "text", "Keyword": "target", "Sentiment": "label"})
+
         print('CSV Data Num:', data_num)
         sentence_list = []
         for i in np.arange(data_num):
