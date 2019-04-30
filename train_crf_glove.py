@@ -7,7 +7,6 @@ import numpy as np
 import codecs
 import copy
 import os
-import models
 from util import create_logger, AverageMeter
 from util import save_checkpoint as save_best_checkpoint
 import json
@@ -21,28 +20,30 @@ import torch.backends.cudnn as cudnn
 import argparse
 from torch import optim
 from sklearn.metrics import confusion_matrix, f1_score, recall_score, precision_score
+from model_batch_crf_glove import AspectSent
 
-#Get model names in the folder
+# Get model names in the folder
 model_names = sorted(name for name in models.__dict__
-    if name.islower() and not name.startswith("__") and callable(models.__dict__[name]))
+                     if name.islower() and not name.startswith("__") and callable(models.__dict__[name]))
 
-#Set default parameters of training
+# Set default parameters of training
 path_tweet = 'cfgs/tweets/config_crf_glove_tweets.yaml'
 path_laptop = 'cfgs/laptop/config_crf_cnn_glove_laptop.yaml'
 path_res = 'cfgs/config_crf_glove_res.yaml'
 path_indo = 'cfgs/indo/config_crf_glove_indo_preprocessed.yaml'
-path_eng =
+path_eng = 'eng.yaml'
 
-files = [path_indo]
+files = [path_eng]
 parser = argparse.ArgumentParser(description='TSA')
-parser.add_argument('--config', 
-                    default=path_indo)#'config_crf_rnn_glove_res.yaml')
+parser.add_argument('--config',
+                    default=path_indo)  # 'config_crf_rnn_glove_res.yaml')
 parser.add_argument('--pwd', default='', type=str)
 parser.add_argument('--e', '--evaluate', action='store_true')
 
 args = parser.parse_args()
 
-#tool functions
+
+# tool functions
 def adjust_learning_rate(optimizer, epoch, args):
     '''
     Descend learning rate
@@ -51,6 +52,7 @@ def adjust_learning_rate(optimizer, epoch, args):
     print("Adjust lr to ", lr)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
+
 
 def create_opt(parameters, config):
     '''
@@ -66,6 +68,7 @@ def create_opt(parameters, config):
         optimizer = optim.Adagrad(parameters, lr=config.lr)
     return optimizer
 
+
 def mkdirs(dir):
     '''
     Create folder
@@ -73,13 +76,14 @@ def mkdirs(dir):
     if not os.path.exists(dir):
         os.mkdir(dir)
 
+
 def save_checkpoint(save_model, i_iter, args, is_best=True):
     '''
     Save the model to local disk
     '''
-#     suffix = '{}_iter'.format(0)
+    #     suffix = '{}_iter'.format(0)
     dict_model = save_model.state_dict()
-#     print(args.snapshot_dir + suffix)
+    #     print(args.snapshot_dir + suffix)
     filename = args.snapshot_dir
     save_best_checkpoint(dict_model, is_best, i_iter, filename)
 
@@ -112,8 +116,8 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger):
             if idx % args.print_freq == 0:
                 print("cls loss {0} with penalty {1}".format(cls_loss.item(), norm_pen.item()))
                 logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
-                tb_logger.add_scalar("train_loss", idx+e_*loops, cls_loss_value.avg)
-                
+                tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
+
         valid_acc, valid_f1 = evaluate_test(dg_valid, model, args)
         logger.info("epoch {}, Validation f1: {}".format(e_, valid_f1))
         # if valid_acc > best_acc:
@@ -144,7 +148,7 @@ def evaluate_test(dr_test, model, args, sample_out=False):
     mistake_samples = 'data/mistakes.txt'
     with open(mistake_samples, 'w') as f:
         f.write('Test begins...')
-    
+
     logger.info("Evaluting")
     dr_test.reset_samples()
     model.eval()
@@ -159,22 +163,22 @@ def evaluate_test(dr_test, model, args, sample_out=False):
             sent, mask, sent_len, label = sent.cuda(), mask.cuda(), sent_len.cuda(), label.cuda()
         pred_label, best_seq = model.predict(sent, mask, sent_len)
 
-        #Compute correct predictions
-        correct_count += sum(pred_label==label).item()
-        
+        # Compute correct predictions
+        correct_count += sum(pred_label == label).item()
+
         true_labels.extend(label.cpu().numpy())
         pred_labels.extend(pred_label.cpu().numpy())
-        
+
         ##Output wrong samples, for debugging
-        indices = torch.nonzero(pred_label!=label)
+        indices = torch.nonzero(pred_label != label)
         if len(indices) > 0:
             indices = indices.squeeze(1)
         if sample_out:
             with open(mistake_samples, 'a') as f:
                 for i in indices:
-                    line = texts[i] + '###' + ' '.join(targets[i]) + '###' + str(label[i]) + '###' + str(pred_label[i]) + '\n'
+                    line = texts[i] + '###' + ' '.join(targets[i]) + '###' + str(label[i]) + '###' + str(
+                        pred_label[i]) + '\n'
                     f.write(line)
-            
 
     acc = correct_count * 1.0 / dr_test.data_len
     f1 = f1_score(true_labels, pred_labels, average='macro')
@@ -184,12 +188,11 @@ def evaluate_test(dr_test, model, args, sample_out=False):
     logger.info('f1_score:{}'.format(f1))
     logger.info('precision:{}'.format(precision_score(true_labels, pred_labels, average='macro')))
     logger.info('recall:{}'.format(recall_score(true_labels, pred_labels, average='macro')))
-    
-    
-#     print('Confusion Matrix')
-#     print(confusion_matrix(true_labels, pred_labels))
-#     print('f1_score:', f1_score(true_labels, pred_labels, average='macro'))
-#     print("Sentiment Accuray {0}, {1}:{2}".format(acc, correct_count, all_counter))
+
+    #     print('Confusion Matrix')
+    #     print(confusion_matrix(true_labels, pred_labels))
+    #     print('f1_score:', f1_score(true_labels, pred_labels, average='macro'))
+    #     print("Sentiment Accuray {0}, {1}:{2}".format(acc, correct_count, all_counter))
     return acc, f1
 
 
@@ -199,27 +202,23 @@ def main():
         with open(file) as f:
             config = yaml.load(f)
 
-
         for k, v in config['common'].items():
             setattr(args, k, v)
-        mkdirs(osp.join("logs/"+args.exp_name))
-        mkdirs(osp.join("checkpoints/"+args.exp_name))
+        mkdirs(osp.join("logs/" + args.exp_name))
+        mkdirs(osp.join("checkpoints/" + args.exp_name))
         global logger
         logger = create_logger('global_logger', 'logs/' + args.exp_name + '/log.txt')
 
         logger.info('{}'.format(args))
 
-
         for key, val in vars(args).items():
             logger.info("{:16} {}".format(key, val))
-
-
 
         cudnn.enabled = True
         args.snapshot_dir = osp.join(args.snapshot_dir, args.exp_name)
 
         global tb_logger
-        tb_logger =SummaryWriter("logs/" + args.exp_name)
+        tb_logger = SummaryWriter("logs/" + args.exp_name)
         global best_acc
         best_acc = 0
 
@@ -232,22 +231,20 @@ def main():
         logger.info("Validating Samples: {}".format(len(valid_data)))
         logger.info("Testing Samples: {}".format(len(test_data)))
 
-
         dg_train = data_generator(args, train_data)
         dg_valid = data_generator(args, valid_data, False)
         dg_test = data_generator(args, test_data, False)
 
-        model = models.__dict__[args.arch](args)
+        # model = models.__dict__[args.arch](args)
+        model = AspectSent(args)
 
-        path = None#'checkpoints/config_crf_glove_tweets_20181206_3/checkpoint.pth.tar9'
+        path = None  # 'checkpoints/config_crf_glove_tweets_20181206_3/checkpoint.pth.tar9'
         if path:
             model.load_state_dict(torch.load(path))
         if args.if_gpu:
             model = model.cuda()
         parameters = filter(lambda p: p.requires_grad, model.parameters())
         optimizer = create_opt(parameters, args)
-
-
 
         if args.training:
             train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger)
@@ -256,8 +253,6 @@ def main():
             PATH = "checkpoints/config_crf_glove_tweets_20190212/checkpoint.pth.tar21"
             model.load_state_dict(torch.load(PATH))
             evaluate_test(dg_test, model, args, sample_out=False)
-
-
 
 
 if __name__ == "__main__":

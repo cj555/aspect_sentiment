@@ -1,5 +1,5 @@
 common:
-    exp_name: indo_tuning_random_split
+    exp_name: eng
     arch: CRFAspectSent
     batch_size: 32
 
@@ -24,8 +24,8 @@ common:
     lambda_unsupervised: 0.5
     lambda_balance: 0
     opt: Adam
-    dropout: 0 # 0.3
-    epoch: 100
+    dropout: 0.3 # 0.3
+    epoch: 30
     lr: 0.0001 # learning rate
     l2: 0.001 # learning rate decay
     adjust_every: 8
@@ -48,9 +48,14 @@ common:
 
     #################Restaurant
     pretrained_embed_path: /home/chen_juan/experiments/data_aspect_sentiment/glove.840B.300d.txt
-    embed_path: /home/chen_juan/experiments/data_aspect_sentiment/local_eng_emb.pkl
+    embed_path: /home/chen_juan/experiments/data_aspect_sentiment/eng/eng_local_emb.pkl
     data_path: /home/chen_juan/experiments/data_aspect_sentiment
-    dic_path: /home/chen_juan/experiments/data_aspect_sentiment/eng_dict.pkl
+    dic_path: /home/chen_juan/experiments/data_aspect_sentiment/eng/eng_dict.pkl
+
+    train_path: /home/chen_juan/experiments/data_aspect_sentiment/eng/processed_Laptop_Train_v2.pkl
+    valid_path: /home/chen_juan/experiments/data_aspect_sentiment/eng/processed_Laptops_Test_Gold.pkl
+    test_path: /home/chen_juan/experiments/data_aspect_sentiment/eng/processed_Restaurants_Test_Gold.pkl
+
 
 #    source_path: data/indo0/train.xml.pkl
 #    target_train_path: data/indo0/dev.xml.pkl
@@ -80,3 +85,22 @@ common:
     elmo_weight_file: /home/richard/richardsun/github/data/Elmo/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5
 
     snapshot_dir: checkpoints/
+
+### ENGLISH data processing log
+#Dataset number: 1488
+#Dataset number: 422
+#Dataset number: 606
+#Dataset number: 2021
+#Tokenized Word Number: 6463
+#Local Vocabulary Size: 5120
+#Dictionary created successfully
+#Local Embeddings Saved!
+#defaultdict(<class 'int'>, {1: 460, 0: 987, 2: 866})
+#Saving successfully!
+#defaultdict(<class 'int'>, {0: 341, 2: 128, 1: 169})
+#Saving successfully!
+#defaultdict(<class 'int'>, {0: 728, 1: 196, 2: 196})
+#Saving successfully!
+#defaultdict(<class 'int'>, {2: 805, 0: 2164, 1: 633})
+#Saving successfully!
+#Preprocessing Over!
