@@ -34,16 +34,18 @@ def train():
 
     ###########Load and process laptop data###########
     dr = data_reader(args)
-    path5 = "raw_data/mitchell_train.csv"
-    path6 = "raw_data/mitchell_val.csv"
-    path7 = "raw_data/mitchell_test.csv"
+
     path1 = 'raw_data/Laptop_Train_v2.xml'
     path2 = "raw_data/Laptops_Test_Gold.xml"
     path3 = "raw_data/Restaurants_Test_Gold.xml"
     path4 = "raw_data/Restaurants_Train_v2.xml"
+    path5 = "raw_data/mitchell_train.csv"
+    path6 = "raw_data/mitchell_val.csv"
+    path7 = "raw_data/mitchell_test.csv"
+    path8 = "raw_data/dongli_train.csv"
+    path9 = "raw_data/dongli_test.csv"
 
-
-    path_list = [path5, path1, path2, path3, path4,path6,path7]
+    path_list = [path8, path9, path5, path1, path2, path3, path4, path6, path7]
     dr.read_train_test_data(path_list)
 
 

@@ -255,7 +255,7 @@ class dataHelper():
 
         return data, text_words
 
-    def text2ids(self, data, word2id):
+    def text2ids(self, data, word2id, is_training):
         """
           Map each word into an id in a text,all the text
         :param data:namtuples
