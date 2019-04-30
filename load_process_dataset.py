@@ -6,7 +6,7 @@ import numpy as np
 
 # Set default parameters of preprocessing data
 parser = argparse.ArgumentParser(description='TSA')
-parser.add_argument('--config', default='data_process.yaml')
+parser.add_argument('--config', default='eng.yaml')
 # parser.add_argument('--config', default='cfgs/config_crf_tag_glove_res.yaml')
 # parser.add_argument('--config', default='cfgs/indo_translated/config_crf_glove_indo_translated.yaml')
 # parser.add_argument('--config', default='cfgs/indo/config_crf_glove_indo_preprocessed.yaml')
@@ -34,12 +34,15 @@ def train():
 
     ###########Load and process laptop data###########
     dr = data_reader(args)
-    path1 = '../data_aspect_sentiment/Laptop_Train_v2.xml'
-    path2 = "../data_aspect_sentiment/Laptops_Test_Gold.xml"
-    path3 = "../data_aspect_sentiment/Restaurants_Test_Gold.xml"
-    path4 = "../data_aspect_sentiment/Restaurants_Train_v2.xml"
+    path1 = 'raw_data/Laptop_Train_v2.xml'
+    path2 = "raw_data/Laptops_Test_Gold.xml"
+    path3 = "raw_data/Restaurants_Test_Gold.xml"
+    path4 = "raw_data/Restaurants_Train_v2.xml"
+    path5 = "raw_data/mitchell_train.csv"
+    path6 = "raw_data/mitchell_val.csv"
+    path7 = "raw_data/mitchell_test.csv"
 
-    path_list = [path1, path2, path3, path4]
+    path_list = [path1, path2, path3, path4,path5,path6,path7]
     dr.read_train_test_data(path_list)
 
 

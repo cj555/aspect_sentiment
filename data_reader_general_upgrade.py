@@ -467,11 +467,12 @@ class data_reader:
         :return:
         """
 
-        print('Reading Dataset....')
         data_list = []
         text_word_list = []
         for data_path in data_path_list:
-            data, text_words = self.dh.read(data_path, data_source)
+            print('Reading Dataset {0}'.format(data_path))
+            source_type = data_path.split('.')[-1]
+            data, text_words = self.dh.read(data_path, data_format=source_type)
             data_list.append(data)
             text_word_list.extend(text_words)
         # Build dictionary based on all the words
@@ -504,12 +505,12 @@ class data_reader:
             data = self.dh.text2ids(data, word2id, self.is_training)
             data_batch = self.dh.to_batches(data)
             # Save each processed data
-            self.save_data(data_batch, self.config.data_path + name + 'processed.pkl')
+            self.save_data(data_batch, 'processed_{0}_{1}.pkl'.format(self.config.data_path, name))
 
-        self.UNK_ID = self.dh.UNK_ID
-        self.PAD_ID = self.dh.PAD_ID
-        self.EOS_ID = self.dh.EOS_ID
-        print('Preprocessing Over!')
+            self.UNK_ID = self.dh.UNK_ID
+            self.PAD_ID = self.dh.PAD_ID
+            self.EOS_ID = self.dh.EOS_ID
+            print('Preprocessing Over!')
 
     def read_raw_data(self, data_path, data_format='xml', use_glove=False):
         """

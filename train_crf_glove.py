@@ -145,7 +145,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger):
 
 
 def evaluate_test(dr_test, model, args, sample_out=False):
-    mistake_samples = 'data/mistakes.txt'
+    mistake_samples = '{0}_mistakes.txt'.format(args.exp_name)
     with open(mistake_samples, 'w') as f:
         f.write('Test begins...')
 
