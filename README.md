@@ -36,6 +36,11 @@ Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sen
 1. How Powerful are Graph Neural Networks? [[Paper, ICLR2019]](https://openreview.net/pdf?id=ryGs6iA5Km)
   >> This paper uses Weisfeiler-Lehman test to measure the expressive power of GNN variants such as GCN and GraphSAGE and found that the above variants that map different neighborhoods to the same representations, hense not maximally powerful GNNs. The authors then propose GIN and then measure the overfitting on node and graph classification tasks. Different GNNs follow a different negithborhood aggregation strategy namely aggregate and combine function in eq (2.1)
 
+## Survey on ASC 
+
+1. Enhanced Aspect Level Sentiment Classification with Auxiliary Memory [[Paper, ACL2018]](Enhanced Aspect Level Sentiment Classification with Auxiliary Memory)
+
+
 
 # Other Resources
 
