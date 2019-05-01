@@ -38,7 +38,7 @@ Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sen
 
 ## Survey on ASC 
 
-1. Enhanced Aspect Level Sentiment Classification with Auxiliary Memory [[Paper, ACL2018]](Enhanced Aspect Level Sentiment Classification with Auxiliary Memory)
+1. Enhanced Aspect Level Sentiment Classification with Auxiliary Memory [[Paper, ACL2018]](https://www.aclweb.org/anthology/C18-1092)
 
 
 
