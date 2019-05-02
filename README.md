@@ -33,7 +33,7 @@ Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sen
 
 12. Transferrable Prototypical Networks for Unsupervised Domain Adaptation [[Paper,CVPR2019_Oral]](https://arxiv.org/abs/1904.11227)
 13. Bidirectional Learning for Domain Adaptation of Semantic Segmentation [[Paper, CVPR2019]](https://arxiv.org/abs/1904.10620) 
-
+14. Phrase-Based & Neural Unsupervised Machine Translation [[Paper, EMNLP2018]](https://arxiv.org/pdf/1804.07755.pdf)
 
 ## Survey On Graph neural network
 
