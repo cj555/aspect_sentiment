@@ -197,20 +197,16 @@ def evaluate_test(dr_test, model, args, sample_out=False):
     return acc, f1
 
 
-def main(train_path,valid_path,test_path):
+def main(train_path, valid_path, test_path, exp=0):
     """ Create the model and start the training."""
-    for file in files:
-        with open(file) as f:
-            config = yaml.load(f)
 
-        for k, v in config['common'].items():
-            setattr(args, k, v)
-        mkdirs(osp.join("logs/" + args.exp_name))
-        mkdirs(osp.join("checkpoints/" + args.exp_name))
+    for file in files:
+        load_config(file)
         global logger
         logger = create_logger('global_logger', 'logs/' + args.exp_name + '/log.txt')
-
         logger.info('{}'.format(args))
+        logger.info(
+            '============Exp:{3}\ntraining:{0}\nvalid:{1}\ntest:{2}'.format(train_path, valid_path, test_path, exp))
 
         for key, val in vars(args).items():
             logger.info("{:16} {}".format(key, val))
@@ -262,9 +258,20 @@ def main(train_path,valid_path,test_path):
             PATH = "checkpoints/config_crf_glove_tweets_20190212/checkpoint.pth.tar21"
             model.load_state_dict(torch.load(PATH))
             evaluate_test(dg_test, model, args, sample_out=False)
+        logger.info('============Exp Done:{3}\ntraining:{0}\nvalid:{1}\ntest:{2}'.format(traf, valid, test, exp))
+
+
+def load_config(file):
+    with open(file) as f:
+        config = yaml.load(f)
+    for k, v in config['common'].items():
+        setattr(args, k, v)
+    mkdirs(osp.join("logs/" + args.exp_name))
+    mkdirs(osp.join("checkpoints/" + args.exp_name))
 
 
 if __name__ == "__main__":
+
     data_path = 'eng_glove_preprocessed/'
     test_fi = [x for x in glob.glob(('{0}/processed_*test*').format(data_path))]
     train_fi = [x for x in glob.glob(('{0}/processed_*train*').format(data_path))]
@@ -275,13 +282,10 @@ if __name__ == "__main__":
             valid_key = valid.split('/')[-1].split('_')[1]
             for test in test_fi:
                 test_key = test.split('/')[-1].split('_')[1]
-                if valid != test and train_key!=test_key and train_key!=valid_key and valid_key!=train_key:
-                    exp+=1
-                    print('============Exp:{3}\ntraining:{0}\nvalid:{1}\ntest:{2}'.format(traf, valid, test, exp))
-                    main(train_path=traf, valid_path=valid, test_path=test)
-
+                if valid != test and train_key != test_key and train_key != valid_key and valid_key != train_key:
+                    exp += 1
+                    main(train_path=traf, valid_path=valid, test_path=test, exp=exp)
 
     pass
-
 
     # main()
