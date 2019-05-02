@@ -31,6 +31,10 @@ Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sen
 11. Aspect-augmented Adversarial Networks for Domain Adaptation [[Paper, ACL2017]](https://aclweb.org/anthology/Q17-1036)
 [[Code, theano]](https://github.com/yuanzh/aspect_adversarial)
 
+12. Transferrable Prototypical Networks for Unsupervised Domain Adaptation [[Paper,CVPR2019_Oral]](https://arxiv.org/abs/1904.11227)
+13. Bidirectional Learning for Domain Adaptation of Semantic Segmentation [[Paper, CVPR2019]](https://arxiv.org/abs/1904.10620) 
+
+
 ## Survey On Graph neural network
 
 1. How Powerful are Graph Neural Networks? [[Paper, ICLR2019]](https://openreview.net/pdf?id=ryGs6iA5Km)
