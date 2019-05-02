@@ -70,6 +70,7 @@ class AspectSent(nn.Module):
         self.feat2tri = nn.Linear(kernel_num, 2 + 2)
         self.inter_crf = LinearChainCrf(2 + 2)
         self.feat2label = nn.Linear(kernel_num, 3)
+        self.feat2source = nn.Linear(config.l_hidden_size, 3)  # train,dev,test
 
         self.loss = nn.NLLLoss()
 
@@ -125,7 +126,6 @@ class AspectSent(nn.Module):
         :param is_training:
         :return:
         """
-
         context = self.bilstm(sents, lens)  # Batch_size*sent_len*hidden_dim
         # pos_weights = self.get_pos_weight(masks, lens)#Batch_size*sent_len
         # context = torch.cat([context, sents[:, :, :-30]], 2)#Batch_size*sent_len*(hidden_dim+word_embed)
@@ -172,35 +172,53 @@ class AspectSent(nn.Module):
         else:
             return label_scores, best_latent_seqs
 
-    def forward(self, sents, masks, labels, lens):
+    def forward(self, sents, masks, labels, lens, domain_adapt=False):
         """
         inputs are list of list for the convenince of top CRF
         :param sents: a list of sentences， batch_size*len*emb_dim
         :param masks: a list of mask for each sentence, batch_size*len
-        :param labels: a list labels
+        :param labels: a list sentiment labels or a list of source labels
         :param lens: 
         :return: 
         """
 
         # scores: batch_size*label_size
         # s_prob:batch_size*sent_len
-        if self.config.if_reset:  self.cat_layer.reset_binary()
-        sents = self.cat_layer(sents, masks)
-        scores, s_prob = self.compute_scores(sents, masks, lens)
-        s_prob_norm = torch.stack([s.norm(1) for s in s_prob]).mean()
 
-        pena = F.relu(self.inter_crf.transitions[1, 0] - self.inter_crf.transitions[0, 0]) + \
-               F.relu(self.inter_crf.transitions[0, 1] - self.inter_crf.transitions[1, 1])
-        norm_pen = self.config.C1 * pena + self.config.C2 * s_prob_norm
+        if not domain_adapt:
+            if self.config.if_reset:  self.cat_layer.reset_binary()
+            sents = self.cat_layer(sents, masks)
+            scores, s_prob = self.compute_scores(sents, masks, lens)
+            s_prob_norm = torch.stack([s.norm(1) for s in s_prob]).mean()
 
-        # print('Transition Penalty:', pena)
-        # print('Marginal Penalty:', s_prob_norm)
+            pena = F.relu(self.inter_crf.transitions[1, 0] - self.inter_crf.transitions[0, 0]) + \
+                   F.relu(self.inter_crf.transitions[0, 1] - self.inter_crf.transitions[1, 1])
+            norm_pen = self.config.C1 * pena + self.config.C2 * s_prob_norm
 
-        scores = F.log_softmax(scores, 1)  # Batch_size*label_size
+            # print('Transition Penalty:', pena)
+            # print('Marginal Penalty:', s_prob_norm)
 
-        cls_loss = self.loss(scores, labels)
+            scores = F.log_softmax(scores, 1)  # Batch_size*label_size
 
-        return cls_loss, norm_pen
+            cls_loss = self.loss(scores, labels)
+
+            return cls_loss, norm_pen
+        else:
+            sents = self.cat_layer(sents, masks)
+            context = self.bilstm(sents, lens)
+            # use avg context
+            target_embed = self.get_target_emb(context, masks)
+            cls_scores = self.feat2source(target_embed)
+            cls_scores = F.log_softmax(cls_scores, 1)
+            cls_loss = self.loss(cls_scores, labels)
+            ## computing cos distance pairwise
+            pair_dis_loss = 0
+            for i in range(target_embed.shape[0]):
+                pair0 = target_embed[i].repeat(target_embed.shape[0], 1)
+                pair_dis_loss += torch.mean(F.cosine_similarity(pair0, target_embed, 1, 1e-6))
+            pair_dis_loss /= target_embed.shape[0]
+
+            return cls_loss
 
     def predict(self, sents, masks, sent_lens):
         if self.config.if_reset:  self.cat_layer.reset_binary()
