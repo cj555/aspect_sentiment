@@ -32,7 +32,7 @@ path_tweet = 'cfgs/tweets/config_crf_glove_tweets.yaml'
 path_laptop = 'cfgs/laptop/config_crf_cnn_glove_laptop.yaml'
 path_res = 'cfgs/config_crf_glove_res.yaml'
 path_indo = 'cfgs/indo/config_crf_glove_indo_preprocessed.yaml'
-path_eng = 'eng.yaml'
+path_eng = 'eng_test.yaml'
 
 files = [path_eng]
 parser = argparse.ArgumentParser(description='TSA')
@@ -89,13 +89,45 @@ def save_checkpoint(save_model, i_iter, args, is_best=True):
     save_best_checkpoint(dict_model, is_best, i_iter, filename)
 
 
-def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger):
+def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_train):
     cls_loss_value = AverageMeter(10)
     best_acc = 0
     best_f1 = 0
     model.train()
     is_best = False
     logger.info("Start Experiment")
+
+    logger.info('training embeding')
+    for param in model.parameters():
+        param.requires_grad = False
+    for param in model.bilstm.parameters():
+        param.requires_grad = True
+    for param in model.cat_layer.parameters():
+        param.requires_grad = True
+    parameters = filter(lambda p: p.requires_grad, model.parameters())
+    optimizer = create_opt(parameters, args)
+
+    for e_ in range(args.epoch):
+        cls_loss, pair_dis_loss = model(self, sents, masks, labels, lens, domain_adapt=True)
+        model.zero_grad()
+        cls_loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
+        optimizer.step()
+        if idx % args.print_freq == 0:
+            print("cls loss {0} with penalty {1}".format(cls_loss.item(), norm_pen.item()))
+            logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
+            tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
+
+    logger.info('training sentiment!!')
+    for param in model.parameters():
+        param.requires_grad = True
+    for param in model.bilstm.parameters():
+        param.requires_grad = False
+    for param in model.cat_layer.parameters():
+        param.requires_grad = False
+    parameters = filter(lambda p: p.requires_grad, model.parameters())
+    optimizer = create_opt(parameters, args)
+
     loops = int(dg_train.data_len / args.batch_size)
     for e_ in range(args.epoch):
         if e_ % args.adjust_every == 0:
@@ -228,6 +260,15 @@ def main(train_path, valid_path, test_path, exp=0):
         valid_data = dr.load_data(args.valid_path)
         test_data = dr.load_data(args.test_path)
 
+        da_train_data = train_data + valid_data + test_data
+        for idx, datum in enumerate(da_train_data):
+            if idx < len(train_data):
+                datum[2] = 0
+            elif idx >= len(train_data) and idx < len(valid_data) + len(train_data):
+                datum[2] = 1
+            else:
+                datum[2] = 2
+
         # train_data = dr.load_data(train_path)
         # valid_data = dr.load_data(valid_path)
         # test_data = dr.load_data(test_path)
@@ -237,6 +278,7 @@ def main(train_path, valid_path, test_path, exp=0):
         logger.info("Testing Samples: {}".format(len(test_data)))
 
         dg_train = data_generator(args, train_data)
+        dg_train_da = data_generator(args, da_train_data)
         dg_valid = data_generator(args, valid_data, False)
         dg_test = data_generator(args, test_data, False)
 
@@ -252,7 +294,7 @@ def main(train_path, valid_path, test_path, exp=0):
         optimizer = create_opt(parameters, args)
 
         if args.training:
-            train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger)
+            train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_train_da)
         else:
             print('NOT arg.training')
             PATH = "checkpoints/config_crf_glove_tweets_20190212/checkpoint.pth.tar21"
