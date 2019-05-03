@@ -37,6 +37,8 @@ Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sen
 15. Hierarchical Attention Transfer Network for Cross-Domain Sentiment Classification [[Paper, AAAI2018]](https://www.aaai.org/ocs/index.php/AAAI/AAAI18/paper/view/16873) [[Code,tensorflow]](https://github.com/hsqmlzno1/HATN)
 
 16. Interactive Attention Transfer Network for Cross-domain Sentiment Classification [[Paper,AAAI2019]](http://staff.ustc.edu.cn/~cheneh/paper_pdf/2019/Kai-Zhang-AAAI.pdf)
+    
+    >>  Gradient Reversal Layer (GRL) (Ganin and Lempitsky 2014; Ganin et al. 2016) to reverse the gradient direction in the training process. T
 
 17. Exploiting Coarse-to-Fine Task Transfer for Aspect-level Sentiment Classification [[Paper, AAAI2018]](https://arxiv.org/pdf/1811.10999.pdf)
 
