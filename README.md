@@ -34,6 +34,12 @@ Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sen
 12. Transferrable Prototypical Networks for Unsupervised Domain Adaptation [[Paper,CVPR2019_Oral]](https://arxiv.org/abs/1904.11227)
 13. Bidirectional Learning for Domain Adaptation of Semantic Segmentation [[Paper, CVPR2019]](https://arxiv.org/abs/1904.10620) 
 14. Phrase-Based & Neural Unsupervised Machine Translation [[Paper, EMNLP2018]](https://arxiv.org/pdf/1804.07755.pdf)
+15. Hierarchical Attention Transfer Network for Cross-Domain Sentiment Classification [[Paper, AAAI2018]](https://www.aaai.org/ocs/index.php/AAAI/AAAI18/paper/view/16873) [[Code,tensorflow]](https://github.com/hsqmlzno1/HATN)
+
+16. Interactive Attention Transfer Network for Cross-domain Sentiment Classification [[Paper,AAAI2019]](http://staff.ustc.edu.cn/~cheneh/paper_pdf/2019/Kai-Zhang-AAAI.pdf)
+
+17. Exploiting Coarse-to-Fine Task Transfer for Aspect-level Sentiment Classification [[Paper, AAAI2018]](https://arxiv.org/pdf/1811.10999.pdf)
+
 
 ## Survey On Graph neural network
 
