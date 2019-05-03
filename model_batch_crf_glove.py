@@ -200,9 +200,9 @@ class AspectSent(nn.Module):
 
             scores = F.log_softmax(scores, 1)  # Batch_size*label_size
 
-            cls_loss = self.loss(scores, labels)
+            domain_cls_loss = self.loss(scores, labels)
 
-            return cls_loss, norm_pen
+            return domain_cls_loss, norm_pen
         else:
             sents = self.cat_layer(sents, masks)
             context = self.bilstm(sents, lens)
@@ -210,15 +210,43 @@ class AspectSent(nn.Module):
             target_embed = self.get_target_emb(context, masks)
             cls_scores = self.feat2source(target_embed)
             cls_scores = F.log_softmax(cls_scores, 1)
-            cls_loss = self.loss(cls_scores, labels)
-            ## computing cos distance pairwise
-            pair_dis_loss = 0
-            for i in range(target_embed.shape[0]):
-                pair0 = target_embed[i].repeat(target_embed.shape[0], 1)
-                pair_dis_loss += torch.mean(F.cosine_similarity(pair0, target_embed, 1, 1e-6))
-            pair_dis_loss /= target_embed.shape[0]
+            # logged_scores = torch.log(cls_scores)
 
-            return cls_loss
+            onehot_labels = torch.zeros(labels.shape[0], 3)
+            for x in range(onehot_labels.shape[0]):
+                onehot_labels[x, labels[x]] = -0.5
+            onehot_labels += 0.5
+
+            domain_cls_loss = -torch.sum(onehot_labels.cuda() * cls_scores)/labels.shape[0]
+
+            # cost_value = self.loss(cls_scores, labels)
+
+            ## computing cos distance pairwise
+
+            in_domain_pair_dis_loss = 0
+            in_domain_pair = 0
+            for d in range(3):
+                in_domain_pair += target_embed[labels == d].shape[0] ** 2
+                for i in range(target_embed[labels == d].shape[0]):
+                    pair0 = target_embed[i].repeat(target_embed[labels == d].shape[0], 1)
+                    in_domain_pair_dis_loss += torch.sum(F.cosine_similarity(pair0, target_embed[labels == d], 1, 1e-6))
+
+            in_domain_pair_dis_loss /= in_domain_pair
+
+            cross_domain_pair_dis_loss = 0
+            cross_domain_pair = 0
+            for d1 in range(3):
+                for d2 in range(3):
+                    if d1 == d2: continue
+                    cross_domain_pair += target_embed[labels == d1].shape[0] * target_embed[labels == d2].shape[0]
+                    for i in range(target_embed[labels == d1].shape[0]):
+                        pair0 = target_embed[i].repeat(target_embed[labels == d2].shape[0], 1)
+                        cross_domain_pair_dis_loss += torch.sum(
+                            F.cosine_similarity(pair0, target_embed[labels == d2], 1, 1e-6))
+
+            cross_domain_pair_dis_loss /= cross_domain_pair
+            # domain_cls_loss = torch.abs(cross_domain_pair_dis_loss-in_domain_pair_dis_loss)
+            return cross_domain_pair_dis_loss, in_domain_pair_dis_loss, domain_cls_loss
 
     def predict(self, sents, masks, sent_lens):
         if self.config.if_reset:  self.cat_layer.reset_binary()

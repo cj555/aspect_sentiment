@@ -106,25 +106,31 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
         param.requires_grad = True
     parameters = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = create_opt(parameters, args)
-
-    for e_ in range(args.epoch):
-        cls_loss, pair_dis_loss = model(self, sents, masks, labels, lens, domain_adapt=True)
-        model.zero_grad()
-        cls_loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
-        optimizer.step()
-        if idx % args.print_freq == 0:
-            print("cls loss {0} with penalty {1}".format(cls_loss.item(), norm_pen.item()))
-            logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
-            tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
+    loops = int(dg_da_train.data_len / args.batch_size)
+    for e_ in range(2):
+        for idx in range(loops):
+            sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(dg_da_train.get_ids_samples(is_balanced=True))
+            if args.if_gpu:
+                sent_vecs, mask_vecs = sent_vecs.cuda(), mask_vecs.cuda()
+                label_list, sent_lens = label_list.cuda(), sent_lens.cuda()
+            pair_dis_loss1, pair_dis_loss2,cls_loss = model(sent_vecs, mask_vecs, label_list, sent_lens, domain_adapt=True)
+            # cls_loss = torch.exp(torch.abs(pair_dis_loss1- pair_dis_loss2))
+            model.zero_grad()
+            cls_loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
+            optimizer.step()
+            if idx % args.print_freq == 0:
+                print("cross domain loss {0}, in domain loss {1}, domain cls closs".format(pair_dis_loss1.item(),pair_dis_loss2.item()),cls_loss.item())
+                logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
+                tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
 
     logger.info('training sentiment!!')
     for param in model.parameters():
         param.requires_grad = True
-    for param in model.bilstm.parameters():
-        param.requires_grad = False
-    for param in model.cat_layer.parameters():
-        param.requires_grad = False
+    # for param in model.bilstm.parameters():
+    #     param.requires_grad = False
+    # for param in model.cat_layer.parameters():
+    #     param.requires_grad = False
     parameters = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = create_opt(parameters, args)
 
