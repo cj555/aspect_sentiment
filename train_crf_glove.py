@@ -107,7 +107,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
     parameters = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = create_opt(parameters, args)
     loops = int(dg_da_train.data_len / args.batch_size)
-    for e_ in range(2):
+    for e_ in range(0):
         for idx in range(loops):
             sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(dg_da_train.get_ids_samples(is_balanced=True))
             if args.if_gpu:
@@ -266,7 +266,7 @@ def main(train_path, valid_path, test_path, exp=0):
         valid_data = dr.load_data(args.valid_path)
         test_data = dr.load_data(args.test_path)
 
-        da_train_data = train_data + valid_data + test_data
+        da_train_data = copy.deepcopy(train_data) + copy.deepcopy(valid_data) + copy.deepcopy(test_data)
         for idx, datum in enumerate(da_train_data):
             if idx < len(train_data):
                 datum[2] = 0
