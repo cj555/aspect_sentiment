@@ -96,18 +96,20 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
     model.train()
     is_best = False
     logger.info("Start Experiment")
+    for e_ in range(args.epoch):
 
-    logger.info('training embeding')
-    for param in model.parameters():
-        param.requires_grad = False
-    for param in model.bilstm.parameters():
-        param.requires_grad = True
-    for param in model.cat_layer.parameters():
-        param.requires_grad = True
-    parameters = filter(lambda p: p.requires_grad, model.parameters())
-    optimizer = create_opt(parameters, args)
-    loops = int(dg_da_train.data_len / args.batch_size)
-    for e_ in range(0):
+        logger.info('training embeding')
+        for param in model.parameters():
+            param.requires_grad = False
+        for param in model.bilstm.parameters():
+            param.requires_grad = True
+        for param in model.cat_layer.parameters():
+            param.requires_grad = True
+        parameters = filter(lambda p: p.requires_grad, model.parameters())
+        optimizer = create_opt(parameters, args)
+        if e_ % args.adjust_every == 0:
+            adjust_learning_rate(optimizer, e_, args)
+        loops = int(dg_da_train.data_len / args.batch_size)
         for idx in range(loops):
             sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(dg_da_train.get_ids_samples(is_balanced=True))
             if args.if_gpu:
@@ -124,20 +126,20 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                 logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
                 tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
 
-    logger.info('training sentiment!!')
-    for param in model.parameters():
-        param.requires_grad = True
-    # for param in model.bilstm.parameters():
-    #     param.requires_grad = False
-    # for param in model.cat_layer.parameters():
-    #     param.requires_grad = False
-    parameters = filter(lambda p: p.requires_grad, model.parameters())
-    optimizer = create_opt(parameters, args)
-
-    loops = int(dg_train.data_len / args.batch_size)
-    for e_ in range(args.epoch):
+        logger.info('training sentiment!!')
+        for param in model.parameters():
+            param.requires_grad = True
+        # for param in model.bilstm.parameters():
+        #     param.requires_grad = False
+        # for param in model.cat_layer.parameters():
+        #     param.requires_grad = False
+        parameters = filter(lambda p: p.requires_grad, model.parameters())
+        optimizer = create_opt(parameters, args)
         if e_ % args.adjust_every == 0:
             adjust_learning_rate(optimizer, e_, args)
+        loops = int(dg_train.data_len / args.batch_size)
+    # for e_ in range(args.epoch):
+
         for idx in range(loops):
             sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(dg_train.get_ids_samples())
             if args.if_gpu:
@@ -180,7 +182,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
 
         model.train()
         is_best = False
-    logger.info("Best Test f1_score: {}".format(test_f1))
+        logger.info("Best Test f1_score: {}".format(best_f1))
 
 
 def evaluate_test(dr_test, model, args, sample_out=False):
