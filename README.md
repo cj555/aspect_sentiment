@@ -38,10 +38,10 @@ Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sen
 
 16. Interactive Attention Transfer Network for Cross-domain Sentiment Classification [[Paper,AAAI2019]](http://staff.ustc.edu.cn/~cheneh/paper_pdf/2019/Kai-Zhang-AAAI.pdf)
     
-    >>  Gradient Reversal Layer (GRL) (Ganin and Lempitsky 2014; Ganin et al. 2016) to reverse the gradient direction in the training process. T
+    >>  Gradient Reversal Layer (GRL) (Ganin and Lempitsky 2014; Ganin et al. 2016) to reverse the gradient direction in the training process. 
 
 17. Exploiting Coarse-to-Fine Task Transfer for Aspect-level Sentiment Classification [[Paper, AAAI2018]](https://arxiv.org/pdf/1811.10999.pdf)
-
+  >> This paper Proposes to use Aspect Categories (AC) to train Aspect Term (AT) task. To do so, C2A (Catories to aspect) layer is trained to label the aspect in Aspect Categories Dataset. Finally the feature is aligned by Contrastive Feature aligment (CFA)
 
 ## Survey On Graph neural network
 
