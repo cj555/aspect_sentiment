@@ -230,10 +230,10 @@ def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
     f1 = f1_score(true_labels, pred_labels, average='macro')
     # logger.info('Confusion Matrix:')
     # logger.info(confusion_matrix(true_labels, pred_labels))
-    logger.info('{}|Acc:{},'
-                'f1:{},'
-                'precison:{},'
-                'recall:{}'.format(mode, acc, f1, precision_score(true_labels, pred_labels, average='macro'),
+    logger.info('{}|Acc:{:.3f},'
+                'f1:{:.3f},'
+                'precison:{:.3f},'
+                'recall:{:.3f}'.format(mode, acc, f1, precision_score(true_labels, pred_labels, average='macro'),
                                    recall_score(true_labels, pred_labels, average='macro')))
     # logger.info('f1_score:{}'.format(f1))
     # logger.info('precision:{}'.format()
