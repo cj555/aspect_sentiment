@@ -1,0 +1,146 @@
+common:
+    exp_name: eng_da
+    arch: CRFAspectSent
+    batch_size: 32
+
+    #Map words to lower case
+    embed_num: 5120
+    #For elmo the emb_size is 1024
+    embed_dim: 300
+    mask_dim: 50
+    if_update_embed: True
+
+    # lstm
+    #l_hidden_size: 256
+    l_hidden_size: 256
+    l_num_layers: 2 # forward and backward
+    l_dropout: 0.3
+    threshold: 1.1
+    # penlaty
+    C1: 0.01 # CRF penalty
+    lambda_f: 0
+    C2: 0.001 #CRF penalty
+    if_reset: True
+    lambda_unsupervised: 0.5
+    lambda_balance: 0
+    opt: Adam
+    dropout: 0.3 # 0.3
+    dropout2: 0.3
+    epoch: 30
+    lr: 0.0001 # learning rate
+    l2: 0.001 # learning rate decay
+    adjust_every: 8
+    clip_norm: 3
+    k_fold: 6
+    print_freq: 10
+    unspervised_loss_weight: 0.1
+    vote: 'major'
+    finetune_embed: False
+    # data processing
+    if_replace: False
+    training: True
+    # traning
+    if_gpu: True
+    use_gpu: True
+    target_cls: 0
+
+    # data_path: data/2014/data.pkl
+    # dic_path: data/2014/dic.pkl
+
+    #################Restaurant
+    pretrained_embed_path: /home/chen_juan/experiments/data_aspect_sentiment/glove.840B.300d.txt
+    embed_path: /home/chen_juan/experiments/aspect_sentiment/eng_glove_preprocessed/eng_local_emb.pkl
+    data_path: /home/chen_juan/experiments/aspect_sentiment/eng_glove_preprocessed/
+    dic_path: /home/chen_juan/experiments/aspect_sentiment/eng_glove_preprocessed/eng_dict.pkl
+
+    train_path: /home/chen_juan/experiments/aspect_sentiment/eng_glove_preprocessed/processed_Laptop_Train_v2.pkl
+    valid_path: /home/chen_juan/experiments/aspect_sentiment/eng_glove_preprocessed/processed_Laptops_Test_Gold.pkl
+    test_path: /home/chen_juan/experiments/aspect_sentiment/eng_glove_preprocessed/processed_Restaurants_Test_Gold.pkl
+
+
+#    source_path: data/indo0/train.xml.pkl
+#    target_train_path: data/indo0/dev.xml.pkl
+#    test_path: data/indo0/dev.xml.pkl
+#    test_path1: data/indo0/test.xml.pkl
+#
+
+
+#    pretrained_embed_path:
+#    embed_path: data/vocab/local_emb.pkl
+#    data_path: data/indo/
+#    source_path: data/random10_keep/random_train.pkl
+#    target_train_path: data/random10_keep/random_dev.pkl
+#    test_path: data/random10_keep/random_dev.pkl
+#    test_path1: data/random10_keep/random_test.pkl
+#
+#    dic_path: data/vocab/dict.pkl
+#
+#
+#    model_path: data/models/source_only/
+#    log_path: data/logs/
+
+    is_stanford_nlp: False
+#    elmo_config_file: ../data/Elmo/elmo_2x4096_512_2048cnn_2xhighway_options.json
+#    elmo_weight_file: ../data/Elmo/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5
+    elmo_config_file: /home/richard/richardsun/github/data/Elmo/elmo_2x4096_512_2048cnn_2xhighway_options.json
+    elmo_weight_file: /home/richard/richardsun/github/data/Elmo/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5
+
+    snapshot_dir: checkpoints/
+
+### ENGLISH data processing log
+#Better speed can be achieved with apex installed from https://www.github.com/nvidia/apex.
+#Reading Dataset raw_data/dongli_train.csv
+#CSV Data Num: 6248
+#Dataset number: 6248
+#Reading Dataset raw_data/dongli_test.csv
+#CSV Data Num: 692
+#Dataset number: 692
+#Reading Dataset raw_data/mitchell_train.csv
+#CSV Data Num: 24976
+#Dataset number: 24976
+#Reading Dataset raw_data/Laptop_Train_v2.xml
+#Dataset number: 1488
+#Reading Dataset raw_data/Laptops_Test_Gold.xml
+#Dataset number: 422
+#Reading Dataset raw_data/Restaurants_Test_Gold.xml
+#Dataset number: 606
+#Reading Dataset raw_data/Restaurants_Train_v2.xml
+#Dataset number: 2021
+#Reading Dataset raw_data/mitchell_val.csv
+#CSV Data Num: 3122
+#Dataset number: 3122
+#Reading Dataset raw_data/mitchell_test.csv
+#CSV Data Num: 3122
+#Dataset number: 3122
+#Tokenized Word Number: 22631
+#Local Vocabulary Size: 5120
+#Dictionary created successfully
+#Local Embeddings Saved!
+#defaultdict(<class 'int'>, {2: 1560, 0: 1561, 1: 3127})
+#Saving successfully!
+#Preprocessing Over!
+#defaultdict(<class 'int'>, {2: 173, 0: 173, 1: 346})
+#Saving successfully!
+#Preprocessing Over!
+#defaultdict(<class 'int'>, {0: 5392, 1: 17448, 2: 2136})
+#Saving successfully!
+#Preprocessing Over!
+#defaultdict(<class 'int'>, {1: 460, 0: 987, 2: 866})
+#Saving successfully!
+#Preprocessing Over!
+#defaultdict(<class 'int'>, {0: 341, 2: 128, 1: 169})
+#Saving successfully!
+#Preprocessing Over!
+#defaultdict(<class 'int'>, {0: 728, 1: 196, 2: 196})
+#Saving successfully!
+#Preprocessing Over!
+#defaultdict(<class 'int'>, {2: 805, 0: 2164, 1: 633})
+#Saving successfully!
+#Preprocessing Over!
+#defaultdict(<class 'int'>, {0: 674, 1: 2181, 2: 267})
+#Saving successfully!
+#Preprocessing Over!
+#defaultdict(<class 'int'>, {1: 2181, 0: 674, 2: 267})
+#Saving successfully!
+#Preprocessing Over!
+
