@@ -115,14 +115,18 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
             if args.if_gpu:
                 sent_vecs, mask_vecs = sent_vecs.cuda(), mask_vecs.cuda()
                 label_list, sent_lens = label_list.cuda(), sent_lens.cuda()
-            pair_dis_loss1, pair_dis_loss2,cls_loss = model(sent_vecs, mask_vecs, label_list, sent_lens, domain_adapt=True)
+            cross_domain_sim, in_domain_sim, cls_loss = model(sent_vecs, mask_vecs, label_list, sent_lens,
+                                                              domain_adapt=True)
             # cls_loss = torch.exp(torch.abs(pair_dis_loss1- pair_dis_loss2))
+            da_score = max(0, torch.ones(1).cuda() - cross_domain_sim) + in_domain_sim
+
             model.zero_grad()
-            cls_loss.backward()
+            da_score.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
             optimizer.step()
             if idx % args.print_freq == 0:
-                print("cross domain loss {0}, in domain loss {1}, domain cls closs".format(pair_dis_loss1.item(),pair_dis_loss2.item()),cls_loss.item())
+                print("cross domain similarity {0}, in domain similarity {1}, domain cls closs".format(
+                    cross_domain_sim.item(), in_domain_sim.item()), cls_loss.item())
                 logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
                 tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
 
@@ -138,7 +142,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
         if e_ % args.adjust_every == 0:
             adjust_learning_rate(optimizer, e_, args)
         loops = int(dg_train.data_len / args.batch_size)
-    # for e_ in range(args.epoch):
+        # for e_ in range(args.epoch):
 
         for idx in range(loops):
             sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(dg_train.get_ids_samples())

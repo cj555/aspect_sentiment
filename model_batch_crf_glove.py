@@ -210,14 +210,15 @@ class AspectSent(nn.Module):
             target_embed = self.get_target_emb(context, masks)
             cls_scores = self.feat2source(target_embed)
             cls_scores = F.log_softmax(cls_scores, 1)
+            domain_cls_loss = self.loss(cls_scores,labels)
             # logged_scores = torch.log(cls_scores)
 
-            onehot_labels = torch.zeros(labels.shape[0], 3)
-            for x in range(onehot_labels.shape[0]):
-                onehot_labels[x, labels[x]] = -0.5
-            onehot_labels += 0.5
-
-            domain_cls_loss = -torch.sum(onehot_labels.cuda() * cls_scores)/labels.shape[0]
+            # onehot_labels = torch.zeros(labels.shape[0], 3)
+            # for x in range(onehot_labels.shape[0]):
+            #     onehot_labels[x, labels[x]] = -0.5
+            # onehot_labels += 0.5
+            #
+            # domain_cls_loss = -torch.sum(onehot_labels.cuda() * cls_scores)/labels.shape[0]
 
             # cost_value = self.loss(cls_scores, labels)
 
@@ -245,6 +246,7 @@ class AspectSent(nn.Module):
                             F.cosine_similarity(pair0, target_embed[labels == d2], 1, 1e-6))
 
             cross_domain_pair_dis_loss /= cross_domain_pair
+            # cross_domain_pair_dis_loss = torch.max(0,1-cross_domain_pair_dis_loss)
             # domain_cls_loss = torch.abs(cross_domain_pair_dis_loss-in_domain_pair_dis_loss)
             return cross_domain_pair_dis_loss, in_domain_pair_dis_loss, domain_cls_loss
 
