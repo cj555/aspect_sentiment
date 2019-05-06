@@ -52,6 +52,8 @@ Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sen
 
 1. Enhanced Aspect Level Sentiment Classification with Auxiliary Memory [[Paper, ACL2018]](https://www.aclweb.org/anthology/C18-1092)
 
+## others
+1. An Attentive Survey of Attention Models [[Paper, IJCAI2019]](https://arxiv.org/abs/1904.02874)
 
 
 # Other Resources
