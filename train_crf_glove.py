@@ -89,10 +89,11 @@ def save_checkpoint(save_model, i_iter, args, is_best=True):
     save_best_checkpoint(dict_model, is_best, i_iter, filename)
 
 
-def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_train):
+def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_train, exp):
     cls_loss_value = AverageMeter(10)
     best_acc = 0
     best_f1 = 0
+    test_f1 = 0
     model.train()
     is_best = False
     logger.info("Start Experiment")
@@ -163,7 +164,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                 logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
                 tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
 
-        valid_acc, valid_f1 = evaluate_test(dg_valid, model, args)
+        valid_acc, valid_f1 = evaluate_test(dg_valid, model, args, mode='valid')
         logger.info("epoch {}, Validation f1: {}".format(e_, valid_f1))
         # if valid_acc > best_acc:
         #     is_best = True
@@ -181,17 +182,17 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
             output_samples = False
             if e_ % 10 == 0:
                 output_samples = True
-            test_acc, test_f1 = evaluate_test(dg_test, model, args, output_samples)
-            logger.info("epoch {}, Test f1_score: {}".format(e_, test_f1))
+            test_acc, test_f1 = evaluate_test(dg_test, model, args, output_samples, mode='test')
+            logger.info("exp{}, epoch {}, Test f1_score: {}".format(exp, e_, test_f1))
 
         model.train()
         is_best = False
-        logger.info("Best Test f1_score: {}".format(best_f1))
+        logger.info("Best Test f1_score: {}".format(test_f1))
 
 
-def evaluate_test(dr_test, model, args, sample_out=False):
+def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
     mistake_samples = '{0}_mistakes.txt'.format(args.exp_name)
-    with open(mistake_samples, 'w') as f:
+    with open(mistake_samples, 'a') as f:
         f.write('Test begins...')
 
     logger.info("Evaluting")
@@ -229,10 +230,14 @@ def evaluate_test(dr_test, model, args, sample_out=False):
     f1 = f1_score(true_labels, pred_labels, average='macro')
     # logger.info('Confusion Matrix:')
     # logger.info(confusion_matrix(true_labels, pred_labels))
-    logger.info('Accuracy:{}'.format(acc))
-    logger.info('f1_score:{}'.format(f1))
-    logger.info('precision:{}'.format(precision_score(true_labels, pred_labels, average='macro')))
-    logger.info('recall:{}'.format(recall_score(true_labels, pred_labels, average='macro')))
+    logger.info('{}|Acc:{},'
+                'f1:{},'
+                'precison:{},'
+                'recall:{}'.format(mode, acc, f1, precision_score(true_labels, pred_labels, average='macro'),
+                                   recall_score(true_labels, pred_labels, average='macro')))
+    # logger.info('f1_score:{}'.format(f1))
+    # logger.info('precision:{}'.format()
+    # logger.info('recall:{}'.format())
 
     #     print('Confusion Matrix')
     #     print(confusion_matrix(true_labels, pred_labels))
@@ -306,12 +311,12 @@ def main(train_path, valid_path, test_path, exp=0):
         optimizer = create_opt(parameters, args)
 
         if args.training:
-            train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_train_da)
+            train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_train_da, exp)
         else:
             print('NOT arg.training')
             PATH = "checkpoints/config_crf_glove_tweets_20190212/checkpoint.pth.tar21"
             model.load_state_dict(torch.load(PATH))
-            evaluate_test(dg_test, model, args, sample_out=False)
+            evaluate_test(dg_test, model, args, sample_out=False, mode='test')
         logger.info('============Exp Done:{3}\ntraining:{0}\nvalid:{1}\ntest:{2}'.format(traf, valid, test, exp))
 
 
