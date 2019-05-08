@@ -130,6 +130,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                     print("exp:{}, e_:{}, stage:classification, domain_cls_loss:{:.2f}, da_loss:{:.2f}".format(exp, e_,
                                                                                                                domain_cls_loss.item(),
                                                                                                                unsuper_loss.item()))
+            test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
         elif e_ % 14 >= 8 and e_ % 14 < 11:
             # for e_ in range(args.epoch):
             logger.info('training embedding classifier')
@@ -164,6 +165,8 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                         "exp:{}, e_:{}, stage:train embedding, domain_cls_loss:{:.2f}, da_loss:{:.2f}".format(exp, e_,
                                                                                                               domain_cls_loss.item(),
                                                                                                               unsuper_loss.item()))
+            test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
+
         else:
             logger.info('training sentiment!!')
             for param in model.parameters():
@@ -197,39 +200,44 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                 if idx % args.print_freq == 0:
                     print(
                         "exp:{}, e_:{}, "
-                        "stage:train embedding, "
-                        "sentiment cls loss {0} "
-                        "with penalty {1}".format(exp,
-                                                  e_,
-                                                  cls_loss.item(),
-                                                  norm_pen.item()))
+                        "stage:train sentiment, "
+                        "sentiment cls loss {:.3f} "
+                        "with penalty {:.3f}".format(exp,
+                                                 e_,
+                                                 cls_loss.item(),
+                                                 norm_pen.item()))
                     # logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
                     # tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
 
-            valid_acc, valid_f1 = evaluate_test(dg_valid, model, args, mode='valid')
-            logger.info("epoch {}, Validation f1: {}".format(e_, valid_f1))
-            # if valid_acc > best_acc:
-            #     is_best = True
-            #     best_acc = valid_acc
-            #     save_checkpoint(model, e_, args, is_best)
-            #     output_samples = False
-            #     if e_ % 10 == 0:
-            #         output_samples = True
-            #     test_acc, test_f1 = evaluate_test(dg_test, model, args, output_samples)
-            #     logger.info("epoch {}, Test acc: {}".format(e_, test_acc))
-            if valid_f1 > best_f1:
-                is_best = True
-                best_f1 = valid_f1
-                save_checkpoint(model, e_, args, is_best)
-                output_samples = False
-                if e_ % 10 == 0:
-                    output_samples = True
-                test_acc, test_f1 = evaluate_test(dg_test, model, args, output_samples, mode='test')
-                logger.info("exp{}, epoch {}, Test f1_score: {}".format(exp, e_, test_f1))
-
-                model.train()
-                is_best = False
+            test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
         logger.info("Best Test f1_score: {}".format(test_f1))
+
+
+def update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1):
+    valid_acc, valid_f1 = evaluate_test(dg_valid, model, args, mode='valid')
+    logger.info("epoch {}, Validation f1: {}".format(e_, valid_f1))
+    # if valid_acc > best_acc:
+    #     is_best = True
+    #     best_acc = valid_acc
+    #     save_checkpoint(model, e_, args, is_best)
+    #     output_samples = False
+    #     if e_ % 10 == 0:
+    #         output_samples = True
+    #     test_acc, test_f1 = evaluate_test(dg_test, model, args, output_samples)
+    #     logger.info("epoch {}, Test acc: {}".format(e_, test_acc))
+    if valid_f1 > best_f1:
+        is_best = True
+        best_f1 = valid_f1
+        save_checkpoint(model, e_, args, is_best)
+        output_samples = False
+        if e_ % 10 == 0:
+            output_samples = True
+        test_acc, test_f1 = evaluate_test(dg_test, model, args, output_samples, mode='test')
+        logger.info("exp{}, epoch {}, Test f1_score: {}".format(exp, e_, test_f1))
+
+        model.train()
+        is_best = False
+    return test_f1
 
 
 def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
