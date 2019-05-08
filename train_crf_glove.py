@@ -127,7 +127,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
                 optimizer.step()
                 if idx % args.print_freq == 0:
-                    print("exp:{}, e_:{}, stage:classification, "
+                    print("exp:{}, e_:{}, task:domain cls,"
                           "domain_cls_loss:{:.2f}, "
                           "da_loss:{:.2f}".format(exp, e_,
                                                   domain_cls_loss.item(),
@@ -165,7 +165,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                     optimizer.step()
                 if idx % args.print_freq == 0:
                     print(
-                        "exp:{}, e_:{}, stage:train embedding, "
+                        "exp:{}, e_:{}, task:domain align,"
                         "domain_cls_loss:{:.2f}, "
                         "da_loss:{:.2f}".format(exp, e_,
                                                 domain_cls_loss.item(),
@@ -208,7 +208,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                                                           domain_adapt=True, domain_adapt_mode='cls')
                     print(
                         "exp:{}, e_:{}, "
-                        "stage:train sentiment, "
+                        "task: sentiment cls, "
                         "sentiment cls loss {:.3f} "
                         "with penalty {:.3f}"
                         "domain_cls_loss:{:.2f}, "
