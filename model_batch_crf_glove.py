@@ -224,14 +224,14 @@ class AspectSent(nn.Module):
                 labels_score, labels_idx = torch.max(F.softmax(domain_cls_score, 1), 1)
 
                 ## unsupervised
-                threshhold = 0.5
+                threshhold = 0.3
                 inverse_att1_weight = F.softmax(1 / (att1_weight + 1e-5), 1)
                 domain_share_context = torch.mean(
                     inverse_att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
                     dim=1)  # batch X hidden_dim
 
-                domain_specific_view = domain_specific_context[(labels_score > threshhold) & (labels_idx == labels) &(labels!=0)]
-                domain_share_view = domain_share_context[(labels_score > threshhold) & (labels_idx == labels) &(labels!=0)]
+                domain_specific_view = domain_specific_context[(labels_score > threshhold) & (labels_idx == labels)]
+                domain_share_view = domain_share_context[(labels_score > threshhold) & (labels_idx == labels)]
                 unsuper_loss = -torch.ones(1).cuda()
                 if len(domain_specific_view) > 0:
                     unsuper_loss = torch.mean(1 - F.cosine_similarity(domain_specific_view, domain_share_view))
