@@ -11,6 +11,7 @@ from torch.nn import utils as nn_utils
 from util import *
 from Layer import SimpleCat, SimpleCatTgtMasked
 from multiprocessing import Pool
+import copy
 
 
 # torch.manual_seed(222)
@@ -70,7 +71,10 @@ class AspectSent(nn.Module):
         self.feat2tri = nn.Linear(kernel_num, 2 + 2)
         self.inter_crf = LinearChainCrf(2 + 2)
         self.feat2label = nn.Linear(kernel_num, 3)
-        self.feat2source = nn.Linear(config.l_hidden_size, 3)  # train,dev,test
+        self.domaincls = nn.Linear(config.l_hidden_size, 3)  # train,dev,test
+        # self.is_valid = nn.Linear(config.l_hidden_size, 2)  # train,dev,test
+        # self.is_test = nn.Linear(config.l_hidden_size, 2)
+        self.attn1 = nn.Linear(config.l_hidden_size, 1)
 
         self.loss = nn.NLLLoss()
 
@@ -172,7 +176,7 @@ class AspectSent(nn.Module):
         else:
             return label_scores, best_latent_seqs
 
-    def forward(self, sents, masks, labels, lens, domain_adapt=False):
+    def forward(self, sents, masks, labels, lens, domain_adapt=False, domain_adapt_mode='cls'):
         """
         inputs are list of list for the convenince of top CRF
         :param sents: a list of sentences， batch_size*len*emb_dim
@@ -204,51 +208,95 @@ class AspectSent(nn.Module):
 
             return domain_cls_loss, norm_pen
         else:
+
             sents = self.cat_layer(sents, masks)
-            context = self.bilstm(sents, lens)
-            # use avg context
-            target_embed = self.get_target_emb(context, masks)
-            cls_scores = self.feat2source(target_embed)
-            cls_scores = F.log_softmax(cls_scores, 1)
-            domain_cls_loss = self.loss(cls_scores,labels)
-            # logged_scores = torch.log(cls_scores)
+            context = self.bilstm(sents, lens)  # batch X sentence_len X hidden_dim
+            att1_weight = F.softmax(self.attn1(context), dim=1)
+            domain_specific_context = torch.mean(att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
+                                                 dim=1)  # batch X hidden_dim
 
-            # onehot_labels = torch.zeros(labels.shape[0], 3)
-            # for x in range(onehot_labels.shape[0]):
-            #     onehot_labels[x, labels[x]] = -0.5
-            # onehot_labels += 0.5
+            domain_cls_score = self.domaincls(domain_specific_context)
+            if domain_adapt_mode == 'cls':
+
+                ## domain classification
+
+                domain_cls_loss = self.loss(F.log_softmax(domain_cls_score, 1), labels)
+                labels_score, labels_idx = torch.max(F.softmax(domain_cls_score, 1), 1)
+
+                ## unsupervised
+                threshhold = 0.5
+                inverse_att1_weight = F.softmax(1 / (att1_weight + 1e-5), 1)
+                domain_share_context = torch.mean(
+                    inverse_att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
+                    dim=1)  # batch X hidden_dim
+
+                domain_specific_view = domain_specific_context[(labels_score > threshhold) & (labels_idx == labels)]
+                domain_share_view = domain_share_context[(labels_score > threshhold) & (labels_idx == labels)]
+                unsuper_loss = -torch.ones(1).cuda()
+                if len(domain_specific_view) > 0:
+                    unsuper_loss = torch.mean(1 - F.cosine_similarity(domain_specific_view, domain_share_view))
+
+                return domain_cls_loss, unsuper_loss
+
+            # elif domain_adapt_mode == 'unsupervised':
             #
-            # domain_cls_loss = -torch.sum(onehot_labels.cuda() * cls_scores)/labels.shape[0]
+            #     domain_share_context = torch.mean(inverse_att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
+            #                                          dim=1)  # batch X hidden_dim
+            #
+            #     domain_specific_context[(labels_score > 0.5) & (labels_idx == labels)]
 
-            # cost_value = self.loss(cls_scores, labels)
+            # train_labels = torch.zeros(labels.shape).type(labels.type())
+            # train_labels[labels == 0] = 1
+            #
+            # valid_labels = torch.zeros(labels.shape).type(labels.type())
+            # valid_labels[labels == 1] = 1
+            #
+            # test_labels = torch.zeros(labels.shape).type(labels.type())
+            # test_labels[labels == 2] = 1
+            #
+            # train_context = self.is_train(domain_context)
+            # valid_context = self.is_valid(domain_context)
+            # test_context = self.is_test(domain_context)
+            #
+            # train_cls_loss = self.loss(F.log_softmax(train_context, 1), train_labels)
+            # valid_cls_loss = self.loss(F.log_softmax(valid_context, 1), valid_labels)
+            # test_cls_loss = self.loss(F.log_softmax(test_context, 1), test_labels)
+            #
+            # domain_cls_loss = (train_cls_loss + valid_cls_loss + test_cls_loss) / 3
+            #
 
-            ## computing cos distance pairwise
+            # elif domain_adapt_mode== 'unsupervised':
+            #     self.predict_domain(sents,masks,labels,lens)
+            #     return domain_cls_loss
 
-            in_domain_pair_dis_loss = 0
-            in_domain_pair = 0
-            for d in range(3):
-                in_domain_pair += target_embed[labels == d].shape[0] ** 2
-                for i in range(target_embed[labels == d].shape[0]):
-                    pair0 = target_embed[i].repeat(target_embed[labels == d].shape[0], 1)
-                    in_domain_pair_dis_loss += torch.sum(F.cosine_similarity(pair0, target_embed[labels == d], 1, 1e-6))
+    # def predict_domain(self, sents, masks, labels, lens):
+    # sents = self.cat_layer(sents, masks)
+    # context = self.bilstm(sents, lens)  # batch X sentence_len X hidden_dim
+    # att1_weight = F.softmax(self.attn1(context), dim=1)
+    # domain_context = torch.mean(att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
+    #                             dim=1)  # batch X hidden_dim
+    #
+    # train_labels = torch.zeros(labels.shape).type(labels.type())
+    # train_labels[labels == 0] = 1
+    #
+    #
+    # valid_labels = torch.zeros(labels.shape).type(labels.type())
+    # valid_labels[labels == 1] = 1
+    #
+    # test_labels = torch.zeros(labels.shape).type(labels.type())
+    # test_labels[labels == 2] = 1
+    #
+    # train_context = self.is_train(domain_context)
+    # valid_context = self.is_valid(domain_context)
+    # test_context = self.is_test(domain_context)
+    #
+    # train_labels_score,train_labels_idx  = torch.max(F.softmax(train_context, 1), 1)
+    # train_labels_score,valid_labels_idx = torch.max(F.softmax(valid_context, 1), 1)
+    # train_labels_score,valid_labels_idx = torch.max(F.softmax(test_context, 1), 1)
+    #
+    # scores = torch.cat((train_labels_score, train_labels_score, train_labels_score)).view(32, -1)
 
-            in_domain_pair_dis_loss /= in_domain_pair
-
-            cross_domain_pair_dis_loss = 0
-            cross_domain_pair = 0
-            for d1 in range(3):
-                for d2 in range(3):
-                    if d1 == d2: continue
-                    cross_domain_pair += target_embed[labels == d1].shape[0] * target_embed[labels == d2].shape[0]
-                    for i in range(target_embed[labels == d1].shape[0]):
-                        pair0 = target_embed[i].repeat(target_embed[labels == d2].shape[0], 1)
-                        cross_domain_pair_dis_loss += torch.sum(
-                            F.cosine_similarity(pair0, target_embed[labels == d2], 1, 1e-6))
-
-            cross_domain_pair_dis_loss /= cross_domain_pair
-            # cross_domain_pair_dis_loss = torch.max(0,1-cross_domain_pair_dis_loss)
-            # domain_cls_loss = torch.abs(cross_domain_pair_dis_loss-in_domain_pair_dis_loss)
-            return cross_domain_pair_dis_loss, in_domain_pair_dis_loss, domain_cls_loss
+    # return
 
     def predict(self, sents, masks, sent_lens):
         if self.config.if_reset:  self.cat_layer.reset_binary()
