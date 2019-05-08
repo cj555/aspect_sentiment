@@ -230,8 +230,8 @@ class AspectSent(nn.Module):
                     inverse_att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
                     dim=1)  # batch X hidden_dim
 
-                domain_specific_view = domain_specific_context[(labels_score > threshhold) & (labels_idx == labels)]
-                domain_share_view = domain_share_context[(labels_score > threshhold) & (labels_idx == labels)]
+                domain_specific_view = domain_specific_context[(labels_score > threshhold) & (labels_idx == labels) &(labels!=0)]
+                domain_share_view = domain_share_context[(labels_score > threshhold) & (labels_idx == labels) &(labels!=0)]
                 unsuper_loss = -torch.ones(1).cuda()
                 if len(domain_specific_view) > 0:
                     unsuper_loss = torch.mean(1 - F.cosine_similarity(domain_specific_view, domain_share_view))
