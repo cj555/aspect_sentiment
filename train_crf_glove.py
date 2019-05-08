@@ -134,6 +134,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                                                   unsuper_loss.item()))
 
             test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
+            model.train()
         elif e_ % 14 >= 8 and e_ % 14 < 11:
             # for e_ in range(args.epoch):
             logger.info('training embedding classifier')
@@ -171,6 +172,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                                                 domain_cls_loss.item(),
                                                 unsuper_loss.item()))
             test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
+            model.train()
 
         else:
             # logger.info('training sentiment!!')
@@ -216,11 +218,11 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                                                 e_,
                                                 cls_loss.item(),
                                                 norm_pen.item(), domain_cls_loss.item(), unsuper_loss.item()))
-                    model.train()
                     # logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
                     # tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
 
             test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
+            model.train()
         logger.info("Best Test f1_score: {}".format(test_f1))
 
 
