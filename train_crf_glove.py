@@ -97,8 +97,59 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
     model.train()
     is_best = False
     logger.info("Start Experiment")
-    for e_ in range(args.epoch * 3):
-        if e_ % 3 == 0:
+    for i in range(3):
+        for e_ in range(args.epoch)[:10]:
+            # logger.info('training sentiment!!')
+            for param in model.parameters():
+                param.requires_grad = True
+            # for param in model.bilstm.parameters():
+            #     param.requires_grad = False
+            # for param in model.cat_layer.parameters():
+            #     param.requires_grad = False
+
+            parameters = filter(lambda p: p.requires_grad, model.parameters())
+            optimizer = create_opt(parameters, args)
+            if e_ % args.adjust_every == 0:
+                adjust_learning_rate(optimizer, e_, args)
+            loops = int(dg_train.data_len / args.batch_size)
+            for idx in range(loops):
+                sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(dg_train.get_ids_samples())
+                if args.if_gpu:
+                    sent_vecs, mask_vecs = sent_vecs.cuda(), mask_vecs.cuda()
+                    label_list, sent_lens = label_list.cuda(), sent_lens.cuda()
+                cls_loss, norm_pen = model(sent_vecs, mask_vecs, label_list, sent_lens)
+                cls_loss_value.update(cls_loss.item())
+
+                total_loss = cls_loss + norm_pen
+                model.zero_grad()
+                total_loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
+                optimizer.step()
+
+                if idx % args.print_freq == 0:
+                    model.eval()
+                    domain_cls_loss, unsuper_loss = model(sent_vecs, mask_vecs, label_list, sent_lens,
+                                                          domain_adapt=True, domain_adapt_mode='cls')
+
+                    print(
+                        "exp:{}, e_:{}, "
+                        "task: sentiment cls, "
+                        "sentiment cls loss {:.3f} "
+                        "with penalty {:.3f},"
+                        "domain_cls_loss:{:.2f}, "
+                        "da_loss:{:.2f}".format(exp,
+                                                e_,
+                                                cls_loss.item(),
+                                                norm_pen.item(), domain_cls_loss.item(), unsuper_loss.item()))
+                    model.train()
+                    # logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
+                    # tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
+            model.eval()
+            test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
+            model.train()
+            logger.info("Best Test f1_score: {}".format(test_f1))
+
+        for e_ in range(args.epoch):
             # if e_ % 20 < 15:
             model.train()
             logger.info('training domain classifier')
@@ -113,8 +164,9 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
             optimizer = create_opt(parameters, args)
             if e_ % args.adjust_every == 0:
                 adjust_learning_rate(optimizer, e_, args)
+
             loops = int(dg_da_train.data_len / args.batch_size)
-            for idx in range(loops * 10):
+            for idx in range(loops):
                 sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(
                     dg_da_train.get_ids_samples(is_balanced=True))
                 if args.if_gpu:
@@ -128,17 +180,17 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                 domain_cls_loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
                 optimizer.step()
-                if idx % args.print_freq*20 == 0:
+                if idx % args.print_freq * 20 == 0:
                     print("exp:{}, e_:{}, task:domain cls,"
                           "domain_cls_loss:{:.2f}, "
                           "da_loss:{:.2f}".format(exp, e_,
                                                   domain_cls_loss.item(),
                                                   unsuper_loss.item()))
-            model.eval()
-            test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
-            model.train()
+                # model.eval()
+                # test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
+                # model.train()
 
-        elif e_ % 3 == 1:
+        for e_ in range(args.epoch)[:3]:
             # elif e_ % 14 >= 8 and e_ % 14 < 11:
             # for e_ in range(args.epoch):
             model.train()
@@ -176,60 +228,9 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                         "da_loss:{:.2f}".format(exp, e_,
                                                 domain_cls_loss.item(),
                                                 unsuper_loss.item()))
-            model.eval()
-            test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
-            model.train()
-
-        elif e_ % 3 == 2:
-            # logger.info('training sentiment!!')
-            for param in model.parameters():
-                param.requires_grad = True
-            # for param in model.bilstm.parameters():
-            #     param.requires_grad = False
-            # for param in model.cat_layer.parameters():
-            #     param.requires_grad = False
-
-            parameters = filter(lambda p: p.requires_grad, model.parameters())
-            optimizer = create_opt(parameters, args)
-            if e_ % args.adjust_every == 0:
-                adjust_learning_rate(optimizer, e_, args)
-            loops = int(dg_train.data_len / args.batch_size)
-            # for e_ in range(args.epoch):
-            for idx in range(loops):
-                sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(dg_train.get_ids_samples())
-                if args.if_gpu:
-                    sent_vecs, mask_vecs = sent_vecs.cuda(), mask_vecs.cuda()
-                    label_list, sent_lens = label_list.cuda(), sent_lens.cuda()
-                cls_loss, norm_pen = model(sent_vecs, mask_vecs, label_list, sent_lens)
-                cls_loss_value.update(cls_loss.item())
-
-                total_loss = cls_loss + norm_pen
-                model.zero_grad()
-                total_loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
-                optimizer.step()
-
-                if idx % args.print_freq == 0:
-                    model.eval()
-                    domain_cls_loss, unsuper_loss = model(sent_vecs, mask_vecs, label_list, sent_lens,
-                                                          domain_adapt=True, domain_adapt_mode='cls')
-                    print(
-                        "exp:{}, e_:{}, "
-                        "task: sentiment cls, "
-                        "sentiment cls loss {:.3f} "
-                        "with penalty {:.3f},"
-                        "domain_cls_loss:{:.2f}, "
-                        "da_loss:{:.2f}".format(exp,
-                                                e_,
-                                                cls_loss.item(),
-                                                norm_pen.item(), domain_cls_loss.item(), unsuper_loss.item()))
-                    model.train()
-                    # logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
-                    # tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
-            model.eval()
-            test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
-            model.train()
-        logger.info("Best Test f1_score: {}".format(test_f1))
+            # model.eval()
+            # test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
+            # model.train()
 
 
 def update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1):

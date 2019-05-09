@@ -224,7 +224,7 @@ class AspectSent(nn.Module):
                 labels_score, labels_idx = torch.max(F.softmax(domain_cls_score, 1), 1)
 
                 ## unsupervised
-                threshhold = 0.3
+                threshhold = 0.5
                 inverse_att1_weight = F.softmax(1 / (att1_weight + 1e-5), 1)
                 domain_share_context = torch.mean(
                     inverse_att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
