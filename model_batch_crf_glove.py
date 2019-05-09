@@ -192,14 +192,15 @@ class AspectSent(nn.Module):
         if not domain_adapt:
             if self.config.if_reset:  self.cat_layer.reset_binary()
 
-
+            #TODO:
             pad_id = max(sents[:, -1])
             target_idx = [(masks[i]==1).nonzero().view(-1) for i in range(masks.shape[0])]
-            target_len = torch.LongTensor([len(x) for x in target_idx]).cuda()
+            target_sent = [sents[i][tpos[0]:(tpos[-1]+1)] for i,tpos in enumerate(target_idx)]
+            target_len = torch.LongTensor([len(x) for x in target_sent]).cuda()
             max_target_len = max(target_len)
-            pad_len = [(max_target_len-target_len[i]).item() for i in range(len(target_idx))]
+            pad_len = [(max_target_len-target_len[i]).item() for i in range(len(target_sent))]
 
-            target_sent_final = torch.stack([torch.cat((target_idx[i],torch.LongTensor([pad_id]*pad_len[i]).cuda())) for i in range(len(target_idx))])
+            target_sent_final = torch.stack([torch.cat((target_sent[i],torch.LongTensor([pad_id]*pad_len[i]).cuda())) for i in range(len(target_idx))])
 
             bf_target_sent=[sents[i][:tpos[0]] for i,tpos in enumerate(target_idx)]
             bf_len = torch.LongTensor([len(x) for x in bf_target_sent]).cuda()
