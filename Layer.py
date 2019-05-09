@@ -183,7 +183,7 @@ class SimpleCat(nn.Module):
         self.senti_embed = nn.Embedding(config.embed_num, 50)
 
     # input are tensors
-    def forward(self, sent, mask, is_elmo=False, is_pos=False):
+    def forward(self, sent, mask, is_elmo=False, is_pos=False,with_mask=True):
         '''
         Args:
         sent: tensor, shape(batch_size, max_len, emb_dim)
@@ -226,7 +226,8 @@ class SimpleCat(nn.Module):
         #print(mask_vec.size())
         
         #Concatenation
-        sent_vec = torch.cat([sent_vec, mask_vec], 2)
+        if with_mask:
+            sent_vec = torch.cat([sent_vec, mask_vec], 2)
 
         # for test
         return sent_vec

@@ -397,13 +397,13 @@ def main(train_path, valid_path, test_path, exp=0):
         # parameters = filter(lambda p: p.requires_grad, model.parameters())
         # optimizer = create_opt(parameters, args)
 
-        # if args.training:
-        #     train(model, dg_train, dg_valid, dg_test, None, args, tb_logger, dg_train_da, exp, dg_train_eval)
-        # else:
-        #     print('NOT arg.training')
-        #     PATH = "checkpoints/config_crf_glove_tweets_20190212/checkpoint.pth.tar21"
-        #     model.load_state_dict(torch.load(PATH))
-        #     evaluate_test(dg_test, model, args, sample_out=False, mode='test')
+        if args.training:
+            train(model, dg_train, dg_valid, dg_test, None, args, tb_logger, dg_train_da, exp, dg_train_eval)
+        else:
+            print('NOT arg.training')
+            PATH = "checkpoints/config_crf_glove_tweets_20190212/checkpoint.pth.tar21"
+            model.load_state_dict(torch.load(PATH))
+            evaluate_test(dg_test, model, args, sample_out=False, mode='test')
         logger.info('============Exp Done:{3}\ntraining:{0}\nvalid:{1}\ntest:{2}'.format(traf, valid, test, exp))
 
 
