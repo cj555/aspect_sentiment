@@ -352,8 +352,16 @@ def main(train_path, valid_path, test_path, exp=0):
         args.valid_path = valid_path
         args.test_path = test_path
         train_data = dr.load_data(args.train_path)
-        valid_data = dr.load_data(args.valid_path)
-        test_data = dr.load_data(args.test_path)
+
+        if valid_path == test_path:
+            tmp_data = dr.load_data(args.test_path)
+            valid_num = int(len(tmp_data) * 0.1)
+            valid_data = copy.deepcopy(tmp_data[:valid_num])
+            test_data = copy.deepcopy(tmp_data[valid_num:])
+
+        else:
+            valid_data = dr.load_data(args.valid_path)
+            test_data = dr.load_data(args.test_path)
 
         da_train_data = copy.deepcopy(train_data) + copy.deepcopy(valid_data) + copy.deepcopy(test_data)
         for idx, datum in enumerate(da_train_data):
@@ -386,16 +394,16 @@ def main(train_path, valid_path, test_path, exp=0):
             model.load_state_dict(torch.load(path))
         if args.if_gpu:
             model = model.cuda()
-        parameters = filter(lambda p: p.requires_grad, model.parameters())
-        optimizer = create_opt(parameters, args)
+        # parameters = filter(lambda p: p.requires_grad, model.parameters())
+        # optimizer = create_opt(parameters, args)
 
-        if args.training:
-            train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_train_da, exp, dg_train_eval)
-        else:
-            print('NOT arg.training')
-            PATH = "checkpoints/config_crf_glove_tweets_20190212/checkpoint.pth.tar21"
-            model.load_state_dict(torch.load(PATH))
-            evaluate_test(dg_test, model, args, sample_out=False, mode='test')
+        # if args.training:
+        #     train(model, dg_train, dg_valid, dg_test, None, args, tb_logger, dg_train_da, exp, dg_train_eval)
+        # else:
+        #     print('NOT arg.training')
+        #     PATH = "checkpoints/config_crf_glove_tweets_20190212/checkpoint.pth.tar21"
+        #     model.load_state_dict(torch.load(PATH))
+        #     evaluate_test(dg_test, model, args, sample_out=False, mode='test')
         logger.info('============Exp Done:{3}\ntraining:{0}\nvalid:{1}\ntest:{2}'.format(traf, valid, test, exp))
 
 
@@ -420,7 +428,8 @@ if __name__ == "__main__":
             valid_key = valid.split('/')[-1].split('_')[1]
             for test in test_fi:
                 test_key = test.split('/')[-1].split('_')[1]
-                if valid != test and train_key != test_key and train_key != valid_key and valid_key != train_key:
+                # if valid != test and train_key != test_key and train_key != valid_key and valid_key != train_key:
+                if valid_key==test_key:
                     exp += 1
                     main(train_path=traf, valid_path=valid, test_path=test, exp=exp)
 
