@@ -332,11 +332,15 @@ def main(train_path, valid_path, test_path, exp=0):
         global logger
         logger = create_logger('global_logger', 'logs/' + args.exp_name + '/log.txt')
         logger.info('{}'.format(args))
+        # logger.info(
+        #     '============Exp:{3}\ntraining:{0}\nvalid:{1}\ntest:{2}'.format(train_path, valid_path, test_path, exp))
         logger.info(
-            '============Exp:{3}\ntraining:{0}\nvalid:{1}\ntest:{2}'.format(train_path, valid_path, test_path, exp))
+            '============\nExp:{3}, training: {0},valid: {1}, test: {2}'.format(train_path.split('/')[-1],
+                                                                                valid_path.split('/')[-1],
+                                                                                test_path.split('/')[-1], exp))
 
-        for key, val in vars(args).items():
-            logger.info("{:16} {}".format(key, val))
+        # for key, val in vars(args).items():
+        #     logger.info("{:16} {}".format(key, val))
 
         cudnn.enabled = True
         args.snapshot_dir = osp.join(args.snapshot_dir, args.exp_name)
@@ -397,13 +401,13 @@ def main(train_path, valid_path, test_path, exp=0):
         # parameters = filter(lambda p: p.requires_grad, model.parameters())
         # optimizer = create_opt(parameters, args)
 
-        # if args.training:
-        #     train(model, dg_train, dg_valid, dg_test, None, args, tb_logger, dg_train_da, exp, dg_train_eval)
-        # else:
-        #     print('NOT arg.training')
-        #     PATH = "checkpoints/config_crf_glove_tweets_20190212/checkpoint.pth.tar21"
-        #     model.load_state_dict(torch.load(PATH))
-        #     evaluate_test(dg_test, model, args, sample_out=False, mode='test')
+        if args.training:
+            train(model, dg_train, dg_valid, dg_test, None, args, tb_logger, dg_train_da, exp, dg_train_eval)
+        else:
+            print('NOT arg.training')
+            PATH = "checkpoints/config_crf_glove_tweets_20190212/checkpoint.pth.tar21"
+            model.load_state_dict(torch.load(PATH))
+            evaluate_test(dg_test, model, args, sample_out=False, mode='test')
         logger.info('============Exp Done:{3}\ntraining:{0}\nvalid:{1}\ntest:{2}'.format(traf, valid, test, exp))
 
 
@@ -429,7 +433,7 @@ if __name__ == "__main__":
             for test in test_fi:
                 test_key = test.split('/')[-1].split('_')[1]
                 # if valid != test and train_key != test_key and train_key != valid_key and valid_key != train_key:
-                if valid_key==test_key:
+                if valid_key == test_key:
                     exp += 1
                     main(train_path=traf, valid_path=valid, test_path=test, exp=exp)
 
