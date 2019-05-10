@@ -750,17 +750,20 @@ class data_generator:
         for i, item in enumerate(b_triples):
             sent_idx_str = ','.join([str(x) for x in item[3]])
             aspect_idx_str = ','.join([str(x) for x in item[6]])
-            sub_str = sent_idx_str.split(aspect_idx_str + ',')
-            bstr = ',' + ','.join(sub_str[0::2])
-            afstr = ','.join(sub_str[1::2]) + '[END]'
-            # b_triples[i][3] = [int(x) for x in bstr.strip(',').split(',')]
-            # a_triples[i][3] = [int(x) for x in afstr.strip(',').split(',')]
+
             b_triples[i][3] = [int(y) for y in
                                sum([x.strip(',').split(',') for x in sent_idx_str.split(aspect_idx_str)[:-1]], [])
                                if y != '']
+
             a_triples[i][3] = [int(y) for y in
                                sum([x.strip(',').split(',') for x in sent_idx_str.split(aspect_idx_str)[1:]], [])
                                if y != '']
+
+            if len(b_triples[i][3])==0:
+                b_triples[i][3] = [self.UNK_ID]
+
+            if len( a_triples[i][3])==0:
+                a_triples[i][3] = [self.UNK_ID]
 
         return b_triples, a_triples, i_triples, select_trip
 
@@ -768,7 +771,7 @@ class data_generator:
         '''
         Get samples including ids of words, labels
         '''
-        self.is_training = False
+        # self.is_training = False
         my_data = []
         if self.is_training:
             if is_balanced:

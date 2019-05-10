@@ -40,7 +40,7 @@ parser.add_argument('--config',
                     default=path_indo)  # 'config_crf_rnn_glove_res.yaml')
 parser.add_argument('--pwd', default='', type=str)
 parser.add_argument('--e', '--evaluate', action='store_true')
-parser.add_argument('--da', action='store_true')
+parser.add_argument('--bio', action='store_true')
 
 args = parser.parse_args()
 
@@ -99,147 +99,147 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
     model.train()
     is_best = False
     logger.info("Start Experiment")
-    for i in range(3):
-        for e_ in range(args.epoch)[:10]:
-            # logger.info('training sentiment!!')
-            for param in model.parameters():
-                param.requires_grad = True
-            # for param in model.bilstm.parameters():
-            #     param.requires_grad = False
-            # for param in model.cat_layer.parameters():
-            #     param.requires_grad = False
 
-            parameters = filter(lambda p: p.requires_grad, model.parameters())
-            optimizer = create_opt(parameters, args)
-            if e_ % args.adjust_every == 0:
-                adjust_learning_rate(optimizer, e_, args)
-            loops = int(dg_train.data_len / args.batch_size)
-            for idx in range(loops):
-                sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(dg_train.get_ids_bio_samples())
-                if args.if_gpu:
-                    sent_vecs, mask_vecs = sent_vecs.cuda(), mask_vecs.cuda()
-                    label_list, sent_lens = label_list.cuda(), sent_lens.cuda()
-                cls_loss, norm_pen = model(sent_vecs, mask_vecs, label_list, sent_lens)
-                cls_loss_value.update(cls_loss.item())
+    for e_ in range(args.epoch):
+        # logger.info('training sentiment!!')
+        for param in model.parameters():
+            param.requires_grad = True
+        parameters = filter(lambda p: p.requires_grad, model.parameters())
+        optimizer = create_opt(parameters, args)
+        if e_ % args.adjust_every == 0:
+            adjust_learning_rate(optimizer, e_, args)
+        loops = int(dg_train.data_len / args.batch_size)
+        for idx in range(loops):
+            b, a, i = next(dg_train.get_ids_bio_samples())
 
-                total_loss = cls_loss + norm_pen
-                model.zero_grad()
-                total_loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
-                optimizer.step()
+            # sent_vecs, mask_vecs, label_list, sent_lens, _, _, _, perm_idx = b
+            # sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(dg_train.get_ids_samples())
 
-                if idx % args.print_freq == 0:
-                    model.eval()
-                    domain_cls_loss, unsuper_loss = model(sent_vecs, mask_vecs, label_list, sent_lens,
-                                                          domain_adapt=True, domain_adapt_mode='cls')
+            # if args.if_gpu:
+            #     sent_vecs, mask_vecs = sent_vecs.cuda(), mask_vecs.cuda()
+            #     label_list, sent_lens = label_list.cuda(), sent_lens.cuda()
+            # cls_loss, norm_pen = model(sent_vecs, mask_vecs, label_list, sent_lens)
+            cls_loss, norm_pen = model(b,a,i)
 
-                    print(
-                        "exp:{}, e_:{}, "
-                        "task: sentiment cls, "
-                        "sentiment cls loss {:.3f} "
-                        "with penalty {:.3f},"
-                        "domain_cls_loss:{:.2f}, "
-                        "da_loss:{:.2f}".format(exp,
-                                                e_,
-                                                cls_loss.item(),
-                                                norm_pen.item(), domain_cls_loss.item(), unsuper_loss.item()))
-                    model.train()
-                    # logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
-                    # tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
-            model.eval()
-            test_f1, valid_f1 = update_test_model(args, best_valid_f1, dg_test, dg_valid, e_, exp, model,
-                                                  test_f1)
-            train_acc, train_f1 = evaluate_test(dg_train_eval, model, args, False, mode='train')
+            cls_loss_value.update(cls_loss.item())
 
-            model.train()
-            if valid_f1 < best_valid_f1 and train_f1 > best_train_f1 and args.da == True:
-                for e1_ in range(args.epoch):
-                    # if e_ % 20 < 15:
-                    model.train()
-                    logger.info('training domain classifier')
-                    for param in model.parameters():
-                        param.requires_grad = False
-                    for param in model.domaincls.parameters():
-                        param.requires_grad = True
-                    for param in model.attn1.parameters():
-                        param.requires_grad = True
+            total_loss = cls_loss + norm_pen
+            model.zero_grad()
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
+            optimizer.step()
 
-                    parameters = filter(lambda p: p.requires_grad, model.parameters())
-                    optimizer = create_opt(parameters, args)
-                    if e1_ % args.adjust_every == 0:
-                        adjust_learning_rate(optimizer, e1_, args)
+            if idx % args.print_freq == 0:
+                model.eval()
+                domain_cls_loss, unsuper_loss = model(sent_vecs, mask_vecs, label_list, sent_lens)
 
-                    loops = int(dg_da_train.data_len / args.batch_size)
-                    for idx in range(loops):
-                        sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(
-                            dg_da_train.get_ids_samples(is_balanced=True))
-                        if args.if_gpu:
-                            sent_vecs, mask_vecs = sent_vecs.cuda(), mask_vecs.cuda()
-                            label_list, sent_lens = label_list.cuda(), sent_lens.cuda()
-                        domain_cls_loss, unsuper_loss = model(sent_vecs, mask_vecs, label_list, sent_lens,
-                                                              domain_adapt=True, domain_adapt_mode='cls')
-                        # cls_loss = torch.exp(torch.abs(pair_dis_loss1- pair_dis_loss2))
+                print(
+                    "exp:{}, e_:{}, "
+                    "task: sentiment cls, "
+                    "sentiment cls loss {:.3f} "
+                    "with penalty {:.3f},"
+                    "domain_cls_loss:{:.2f}, "
+                    "da_loss:{:.2f}".format(exp,
+                                            e_,
+                                            cls_loss.item(),
+                                            norm_pen.item(), domain_cls_loss.item(), unsuper_loss.item()))
+                model.train()
+                # logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
+                # tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
+        model.eval()
+        test_f1, valid_f1 = update_test_model(args, best_valid_f1, dg_test, dg_valid, e_, exp, model,
+                                              test_f1)
+        # train_acc, train_f1 = evaluate_test(dg_train_eval, model, args, False, mode='train')
 
-                        model.zero_grad()
-                        domain_cls_loss.backward()
-                        torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
-                        optimizer.step()
-                        if idx % args.print_freq * 20 == 0:
-                            print("exp:{}, e1_:{}, task:domain cls,"
-                                  "domain_cls_loss:{:.2f}, "
-                                  "da_loss:{:.2f}".format(exp, e1_,
-                                                          domain_cls_loss.item(),
-                                                          unsuper_loss.item()))
-                        # model.eval()
-                        # test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
-                        # model.train()
+        # model.train()
+        # if valid_f1 < best_valid_f1 and train_f1 > best_train_f1 and args.da == True:
+        #     for e1_ in range(args.epoch):
+        #         # if e_ % 20 < 15:
+        #         model.train()
+        #         logger.info('training domain classifier')
+        #         for param in model.parameters():
+        #             param.requires_grad = False
+        #         for param in model.domaincls.parameters():
+        #             param.requires_grad = True
+        #         for param in model.attn1.parameters():
+        #             param.requires_grad = True
+        #
+        #         parameters = filter(lambda p: p.requires_grad, model.parameters())
+        #         optimizer = create_opt(parameters, args)
+        #         if e1_ % args.adjust_every == 0:
+        #             adjust_learning_rate(optimizer, e1_, args)
+        #
+        #         loops = int(dg_da_train.data_len / args.batch_size)
+        #         for idx in range(loops):
+        #             sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(
+        #                 dg_da_train.get_ids_samples(is_balanced=True))
+        #             if args.if_gpu:
+        #                 sent_vecs, mask_vecs = sent_vecs.cuda(), mask_vecs.cuda()
+        #                 label_list, sent_lens = label_list.cuda(), sent_lens.cuda()
+        #             domain_cls_loss, unsuper_loss = model(sent_vecs, mask_vecs, label_list, sent_lens,
+        #                                                   domain_adapt=True, domain_adapt_mode='cls')
+        #             # cls_loss = torch.exp(torch.abs(pair_dis_loss1- pair_dis_loss2))
+        #
+        #             model.zero_grad()
+        #             domain_cls_loss.backward()
+        #             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
+        #             optimizer.step()
+        #             if idx % args.print_freq * 20 == 0:
+        #                 print("exp:{}, e1_:{}, task:domain cls,"
+        #                       "domain_cls_loss:{:.2f}, "
+        #                       "da_loss:{:.2f}".format(exp, e1_,
+        #                                               domain_cls_loss.item(),
+        #                                               unsuper_loss.item()))
+        #             # model.eval()
+        #             # test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
+        #             # model.train()
+        #
+        #     for e1_ in range(args.epoch)[:3]:
+        #         # elif e_ % 14 >= 8 and e_ % 14 < 11:
+        #         # for e_ in range(args.epoch):
+        #         model.train()
+        #         logger.info('training embedding classifier')
+        #         for param in model.parameters():
+        #             param.requires_grad = False
+        #         for param in model.bilstm.parameters():
+        #             param.requires_grad = True
+        #         for param in model.cat_layer.parameters():
+        #             param.requires_grad = True
+        #
+        #         parameters = filter(lambda p: p.requires_grad, model.parameters())
+        #         optimizer = create_opt(parameters, args)
+        #         if e1_ % args.adjust_every == 0:
+        #             adjust_learning_rate(optimizer, e1_, args)
+        #         loops = int(dg_da_train.data_len / args.batch_size)
+        #         for idx in range(loops):
+        #             sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(
+        #                 dg_da_train.get_ids_samples(is_balanced=True))
+        #             if args.if_gpu:
+        #                 sent_vecs, mask_vecs = sent_vecs.cuda(), mask_vecs.cuda()
+        #                 label_list, sent_lens = label_list.cuda(), sent_lens.cuda()
+        #             domain_cls_loss, unsuper_loss = model(sent_vecs, mask_vecs, label_list, sent_lens,
+        #                                                   domain_adapt=True, domain_adapt_mode='cls')
+        #             # cls_loss = torch.exp(torch.abs(pair_dis_loss1- pair_dis_loss2))
+        #             if unsuper_loss > 0:
+        #                 model.zero_grad()
+        #                 unsuper_loss.backward()
+        #                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
+        #                 optimizer.step()
+        #             if idx % args.print_freq == 0:
+        #                 print(
+        #                     "exp:{}, e1_:{}, task:domain align,"
+        #                     "domain_cls_loss:{:.2f}, "
+        #                     "da_loss:{:.2f}".format(exp, e1_,
+        #                                             domain_cls_loss.item(),
+        #                                             unsuper_loss.item()))
+        #         # model.eval()
+        #
+        # best_train_f1 = max(train_f1, best_train_f1)
+        # best_valid_f1 = max(valid_f1, best_valid_f1)
+        # logger.info("Best Test f1_score: {}".format(test_f1))
 
-                for e1_ in range(args.epoch)[:3]:
-                    # elif e_ % 14 >= 8 and e_ % 14 < 11:
-                    # for e_ in range(args.epoch):
-                    model.train()
-                    logger.info('training embedding classifier')
-                    for param in model.parameters():
-                        param.requires_grad = False
-                    for param in model.bilstm.parameters():
-                        param.requires_grad = True
-                    for param in model.cat_layer.parameters():
-                        param.requires_grad = True
-
-                    parameters = filter(lambda p: p.requires_grad, model.parameters())
-                    optimizer = create_opt(parameters, args)
-                    if e1_ % args.adjust_every == 0:
-                        adjust_learning_rate(optimizer, e1_, args)
-                    loops = int(dg_da_train.data_len / args.batch_size)
-                    for idx in range(loops):
-                        sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(
-                            dg_da_train.get_ids_samples(is_balanced=True))
-                        if args.if_gpu:
-                            sent_vecs, mask_vecs = sent_vecs.cuda(), mask_vecs.cuda()
-                            label_list, sent_lens = label_list.cuda(), sent_lens.cuda()
-                        domain_cls_loss, unsuper_loss = model(sent_vecs, mask_vecs, label_list, sent_lens,
-                                                              domain_adapt=True, domain_adapt_mode='cls')
-                        # cls_loss = torch.exp(torch.abs(pair_dis_loss1- pair_dis_loss2))
-                        if unsuper_loss > 0:
-                            model.zero_grad()
-                            unsuper_loss.backward()
-                            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
-                            optimizer.step()
-                        if idx % args.print_freq == 0:
-                            print(
-                                "exp:{}, e1_:{}, task:domain align,"
-                                "domain_cls_loss:{:.2f}, "
-                                "da_loss:{:.2f}".format(exp, e1_,
-                                                        domain_cls_loss.item(),
-                                                        unsuper_loss.item()))
-                    # model.eval()
-
-            best_train_f1 = max(train_f1, best_train_f1)
-            best_valid_f1 = max(valid_f1, best_valid_f1)
-            logger.info("Best Test f1_score: {}".format(test_f1))
-
-            # test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
-            # model.train()
+        # test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
+        # model.train()
 
 
 def update_test_model(args, best_valid_f1, dg_test, dg_valid, e_, exp, model, test_f1):
@@ -282,7 +282,8 @@ def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
     pred_labels = []
     print("transitions matrix ", model.inter_crf.transitions.data)
     while dr_test.index < dr_test.data_len:
-        sent, mask, label, sent_len, texts, targets, _ = next(dr_test.get_ids_samples())
+        b, a, i = next(dr_test.get_ids_bio_samples())
+        sent, mask, label, sent_len, texts, targets, _, perm_idx = b
         if args.if_gpu:
             sent, mask, sent_len, label = sent.cuda(), mask.cuda(), sent_len.cuda(), label.cuda()
         pred_label, best_seq = model.predict(sent, mask, sent_len)
@@ -429,7 +430,7 @@ if __name__ == "__main__":
             for test in test_fi:
                 test_key = test.split('/')[-1].split('_')[1]
                 # if valid != test and train_key != test_key and train_key != valid_key and valid_key != train_key:
-                if valid_key==test_key:
+                if valid_key == test_key:
                     exp += 1
                     main(train_path=traf, valid_path=valid, test_path=test, exp=exp)
 

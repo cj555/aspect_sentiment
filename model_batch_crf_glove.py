@@ -26,7 +26,11 @@ class biLSTM(nn.Module):
         super(biLSTM, self).__init__()
         self.config = config
 
-        self.rnn = nn.GRU(config.embed_dim + config.mask_dim, int(config.l_hidden_size / 2), batch_first=True,
+        # self.rnn = nn.GRU(config.embed_dim + config.mask_dim, int(config.l_hidden_size / 2), batch_first=True,
+        #                   num_layers=int(config.l_num_layers / 2),
+        #                   bidirectional=True)
+
+        self.rnn = nn.GRU(config.embed_dim, int(config.l_hidden_size / 2), batch_first=True,
                           num_layers=int(config.l_num_layers / 2),
                           bidirectional=True)
         init_ortho(self.rnn)
@@ -63,7 +67,7 @@ class AspectSent(nn.Module):
         self.config = config
 
         input_dim = config.l_hidden_size
-        kernel_num = config.l_hidden_size
+        kernel_num = config.l_hidden_size * 3
         self.conv = nn.Conv1d(input_dim, kernel_num, 3, padding=1)
         # self.conv = nn.Conv1d(input_dim, kernel_num, 3, dilation=2, padding=2)
 
@@ -140,14 +144,14 @@ class AspectSent(nn.Module):
 
         batch_size, max_len, hidden_dim = context.size()
 
-        # Expand dimension for concatenation
-        target_emb_avg = self.get_target_emb(context, masks)
-        target_emb_avg_exp = target_emb_avg.expand(max_len, batch_size, hidden_dim)
-        target_emb_avg_exp = target_emb_avg_exp.transpose(0, 1)  # Batch_size*max_len*embedding
-
-        ###Addition model
-        u = target_emb_avg_exp
-        context = context + u  # Batch_size*max_len*embedding
+        # # Expand dimension for concatenation
+        # target_emb_avg = self.get_target_emb(context, masks)
+        # target_emb_avg_exp = target_emb_avg.expand(max_len, batch_size, hidden_dim)
+        # target_emb_avg_exp = target_emb_avg_exp.transpose(0, 1)  # Batch_size*max_len*embedding
+        #
+        # ###Addition model
+        # u = target_emb_avg_exp
+        # context = context + u  # Batch_size*max_len*embedding
         # concatenation model
         # context1 = torch.cat([context, target_emb_avg_exp], 2)
         word_mask = torch.full((batch_size, max_len), 0)
@@ -167,16 +171,18 @@ class AspectSent(nn.Module):
         # label_scores = [self.feat2label(sent_v).squeeze(0) for sent_v in sent_vs]
         # label_scores = torch.stack(label_scores)
         sent_vs = self.dropout(sent_vs)
-        label_scores = self.feat2label(sent_vs)
+        # label_scores = self.feat2label(sent_vs)
+
+        label_scores = None
 
         best_latent_seqs = self.inter_crf.decode(feats, word_mask.type_as(feats))
 
         if is_training:
-            return label_scores, select_polarities
+            return label_scores, select_polarities, sent_vs
         else:
-            return label_scores, best_latent_seqs
+            return label_scores, best_latent_seqs, sent_vs
 
-    def forward(self, sents, masks, labels, lens, domain_adapt=False, domain_adapt_mode='cls'):
+    def forward(self, b, a, i):
         """
         inputs are list of list for the convenince of top CRF
         :param sents: a list of sentences， batch_size*len*emb_dim
@@ -189,143 +195,157 @@ class AspectSent(nn.Module):
         # scores: batch_size*label_size
         # s_prob:batch_size*sent_len
 
-        if not domain_adapt:
-            if self.config.if_reset:  self.cat_layer.reset_binary()
+        if self.config.if_reset:  self.cat_layer.reset_binary()
 
-            #TODO:
-            pad_id = max(sents[:, -1])
+        # #TODO:
+        # pad_id = max(sents[:, -1])
+        #
+        # target_idx = [(masks[i]==1).nonzero().view(-1) for i in range(masks.shape[0])]
+        # target_sent = [sents[i][tpos[0]:(tpos[-1]+1)] for i,tpos in enumerate(target_idx)]
+        # target_len = torch.LongTensor([len(x) for x in target_sent]).cuda()
+        # max_target_len = max(target_len)
+        # pad_len = [(max_target_len-target_len[i]).item() for i in range(len(target_sent))]
+        #
+        # target_sent_final = torch.stack([torch.cat((target_sent[i],torch.LongTensor([pad_id]*pad_len[i]).cuda())) for i in range(len(target_idx))])
+        #
+        # bf_target_sent=[sents[i][:tpos[0]] for i,tpos in enumerate(target_idx)]
+        # bf_len = torch.LongTensor([len(x) for x in bf_target_sent]).cuda()
+        # max_bf_len = max(bf_len)
+        # pad_len = [(max_bf_len - bf_len[i]).item() for i in range(len(bf_target_sent))]
+        #
+        # bf_target_sent_final = torch.stack(
+        #     [torch.cat((bf_target_sent[i], torch.LongTensor([pad_id] * pad_len[i]).cuda())) for i in
+        #      range(len(bf_target_sent))])
+        #
+        #
+        # af_target_sent = [sents[i][tpos[-1]:] for i, tpos in enumerate(target_idx)]
+        # af_len = lens-(target_len + bf_len)
+        # max_af_len = max(af_len)
+        #
+        #
 
-            target_idx = [(masks[i]==1).nonzero().view(-1) for i in range(masks.shape[0])]
-            target_sent = [sents[i][tpos[0]:(tpos[-1]+1)] for i,tpos in enumerate(target_idx)]
-            target_len = torch.LongTensor([len(x) for x in target_sent]).cuda()
-            max_target_len = max(target_len)
-            pad_len = [(max_target_len-target_len[i]).item() for i in range(len(target_sent))]
+        pena = 0
+        s_prob_norm = 0
+        sent_vs_all = []
+        for datum in [b, a, i]:
+            sents, masks, labels, lens, _, _, _, perm_idx = datum
+            sents, masks, labels, lens = sents.cuda(), masks.cuda(), labels.cuda(), lens.cuda()
+            sents = self.cat_layer(sents, masks, with_mask=False)
+            scores, s_prob, sent_vs_ordered = self.compute_scores(sents, masks, lens)
+            sent_vs = torch.zeros(size=sent_vs_ordered.shape).cuda()  # batch X lstm_hidden
+            for i in range(sent_vs.shape[0]):
+                sent_vs[perm_idx[i]] = sent_vs_ordered[i]
 
-            target_sent_final = torch.stack([torch.cat((target_sent[i],torch.LongTensor([pad_id]*pad_len[i]).cuda())) for i in range(len(target_idx))])
+            # reorder the features
+            sent_vs_all.append(sent_vs)
+            s_prob_norm += torch.stack([s.norm(1) for s in s_prob]).mean()
 
-            bf_target_sent=[sents[i][:tpos[0]] for i,tpos in enumerate(target_idx)]
-            bf_len = torch.LongTensor([len(x) for x in bf_target_sent]).cuda()
-            max_bf_len = max(bf_len)
-            pad_len = [(max_bf_len - bf_len[i]).item() for i in range(len(bf_target_sent))]
+            pena += F.relu(self.inter_crf.transitions[1, 0] - self.inter_crf.transitions[0, 0]) + \
+                    F.relu(self.inter_crf.transitions[0, 1] - self.inter_crf.transitions[1, 1])
 
-            bf_target_sent_final = torch.stack(
-                [torch.cat((bf_target_sent[i], torch.LongTensor([pad_id] * pad_len[i]).cuda())) for i in
-                 range(len(bf_target_sent))])
+        norm_pen = self.config.C1 * pena / 3 + self.config.C2 * s_prob_norm / 3
 
+        # print('Transition Penalty:', pena)
+        # print('Marginal Penalty:', s_prob_norm)
+        features = torch.cat(sent_vs_all, dim=1)
+        scores = self.feat2label(features)
 
-            af_target_sent = [sents[i][tpos[-1]:] for i, tpos in enumerate(target_idx)]
-            af_len = lens-(target_len + bf_len)
-            max_af_len = max(af_len)
+        scores = F.log_softmax(scores, 1)  # Batch_size*label_size
 
+        sentiment_cls_loss = self.loss(scores, labels)
 
+        return sentiment_cls_loss, norm_pen
 
-
-            sents = self.cat_layer(sents, masks)
-            scores, s_prob = self.compute_scores(sents, masks, lens)
-            s_prob_norm = torch.stack([s.norm(1) for s in s_prob]).mean()
-
-            pena = F.relu(self.inter_crf.transitions[1, 0] - self.inter_crf.transitions[0, 0]) + \
-                   F.relu(self.inter_crf.transitions[0, 1] - self.inter_crf.transitions[1, 1])
-            norm_pen = self.config.C1 * pena + self.config.C2 * s_prob_norm
-
-            # print('Transition Penalty:', pena)
-            # print('Marginal Penalty:', s_prob_norm)
-
-            scores = F.log_softmax(scores, 1)  # Batch_size*label_size
-
-            domain_cls_loss = self.loss(scores, labels)
-
-            return domain_cls_loss, norm_pen
-        else:
-
-            sents = self.cat_layer(sents, masks)
-            context = self.bilstm(sents, lens)  # batch X sentence_len X hidden_dim
-            att1_weight = F.softmax(self.attn1(context), dim=1)
-            domain_specific_context = torch.mean(att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
-                                                 dim=1)  # batch X hidden_dim
-
-            domain_cls_score = self.domaincls(domain_specific_context)
-            if domain_adapt_mode == 'cls':
-
-                ## domain classification
-
-                domain_cls_loss = self.loss(F.log_softmax(domain_cls_score, 1), labels)
-                labels_score, labels_idx = torch.max(F.softmax(domain_cls_score, 1), 1)
-
-                ## unsupervised
-                threshhold = 0.5
-                inverse_att1_weight = F.softmax(1 / (att1_weight + 1e-5), 1)
-                domain_share_context = torch.mean(
-                    inverse_att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
-                    dim=1)  # batch X hidden_dim
-
-                domain_specific_view = domain_specific_context[(labels_score > threshhold) & (labels_idx == labels)]
-                domain_share_view = domain_share_context[(labels_score > threshhold) & (labels_idx == labels)]
-                unsuper_loss = -torch.ones(1).cuda()
-                if len(domain_specific_view) > 0:
-                    unsuper_loss = torch.mean(1 - F.cosine_similarity(domain_specific_view, domain_share_view))
-
-                return domain_cls_loss, unsuper_loss
-
-            # elif domain_adapt_mode == 'unsupervised':
-            #
-            #     domain_share_context = torch.mean(inverse_att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
-            #                                          dim=1)  # batch X hidden_dim
-            #
-            #     domain_specific_context[(labels_score > 0.5) & (labels_idx == labels)]
-
-            # train_labels = torch.zeros(labels.shape).type(labels.type())
-            # train_labels[labels == 0] = 1
-            #
-            # valid_labels = torch.zeros(labels.shape).type(labels.type())
-            # valid_labels[labels == 1] = 1
-            #
-            # test_labels = torch.zeros(labels.shape).type(labels.type())
-            # test_labels[labels == 2] = 1
-            #
-            # train_context = self.is_train(domain_context)
-            # valid_context = self.is_valid(domain_context)
-            # test_context = self.is_test(domain_context)
-            #
-            # train_cls_loss = self.loss(F.log_softmax(train_context, 1), train_labels)
-            # valid_cls_loss = self.loss(F.log_softmax(valid_context, 1), valid_labels)
-            # test_cls_loss = self.loss(F.log_softmax(test_context, 1), test_labels)
-            #
-            # domain_cls_loss = (train_cls_loss + valid_cls_loss + test_cls_loss) / 3
-            #
-
-            # elif domain_adapt_mode== 'unsupervised':
-            #     self.predict_domain(sents,masks,labels,lens)
-            #     return domain_cls_loss
-
-    # def predict_domain(self, sents, masks, labels, lens):
-    # sents = self.cat_layer(sents, masks)
-    # context = self.bilstm(sents, lens)  # batch X sentence_len X hidden_dim
-    # att1_weight = F.softmax(self.attn1(context), dim=1)
-    # domain_context = torch.mean(att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
-    #                             dim=1)  # batch X hidden_dim
+    #     else:
     #
-    # train_labels = torch.zeros(labels.shape).type(labels.type())
-    # train_labels[labels == 0] = 1
+    #         sents = self.cat_layer(sents, masks)
+    #         context = self.bilstm(sents, lens)  # batch X sentence_len X hidden_dim
+    #         att1_weight = F.softmax(self.attn1(context), dim=1)
+    #         domain_specific_context = torch.mean(att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
+    #                                              dim=1)  # batch X hidden_dim
     #
+    #         domain_cls_score = self.domaincls(domain_specific_context)
+    #         if domain_adapt_mode == 'cls':
     #
-    # valid_labels = torch.zeros(labels.shape).type(labels.type())
-    # valid_labels[labels == 1] = 1
+    #             ## domain classification
     #
-    # test_labels = torch.zeros(labels.shape).type(labels.type())
-    # test_labels[labels == 2] = 1
+    #             domain_cls_loss = self.loss(F.log_softmax(domain_cls_score, 1), labels)
+    #             labels_score, labels_idx = torch.max(F.softmax(domain_cls_score, 1), 1)
     #
-    # train_context = self.is_train(domain_context)
-    # valid_context = self.is_valid(domain_context)
-    # test_context = self.is_test(domain_context)
+    #             ## unsupervised
+    #             threshhold = 0.5
+    #             inverse_att1_weight = F.softmax(1 / (att1_weight + 1e-5), 1)
+    #             domain_share_context = torch.mean(
+    #                 inverse_att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
+    #                 dim=1)  # batch X hidden_dim
     #
-    # train_labels_score,train_labels_idx  = torch.max(F.softmax(train_context, 1), 1)
-    # train_labels_score,valid_labels_idx = torch.max(F.softmax(valid_context, 1), 1)
-    # train_labels_score,valid_labels_idx = torch.max(F.softmax(test_context, 1), 1)
+    #             domain_specific_view = domain_specific_context[(labels_score > threshhold) & (labels_idx == labels)]
+    #             domain_share_view = domain_share_context[(labels_score > threshhold) & (labels_idx == labels)]
+    #             unsuper_loss = -torch.ones(1).cuda()
+    #             if len(domain_specific_view) > 0:
+    #                 unsuper_loss = torch.mean(1 - F.cosine_similarity(domain_specific_view, domain_share_view))
     #
-    # scores = torch.cat((train_labels_score, train_labels_score, train_labels_score)).view(32, -1)
-
-    # return
+    #             return domain_cls_loss, unsuper_loss
+    #
+    #         # elif domain_adapt_mode == 'unsupervised':
+    #         #
+    #         #     domain_share_context = torch.mean(inverse_att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
+    #         #                                          dim=1)  # batch X hidden_dim
+    #         #
+    #         #     domain_specific_context[(labels_score > 0.5) & (labels_idx == labels)]
+    #
+    #         # train_labels = torch.zeros(labels.shape).type(labels.type())
+    #         # train_labels[labels == 0] = 1
+    #         #
+    #         # valid_labels = torch.zeros(labels.shape).type(labels.type())
+    #         # valid_labels[labels == 1] = 1
+    #         #
+    #         # test_labels = torch.zeros(labels.shape).type(labels.type())
+    #         # test_labels[labels == 2] = 1
+    #         #
+    #         # train_context = self.is_train(domain_context)
+    #         # valid_context = self.is_valid(domain_context)
+    #         # test_context = self.is_test(domain_context)
+    #         #
+    #         # train_cls_loss = self.loss(F.log_softmax(train_context, 1), train_labels)
+    #         # valid_cls_loss = self.loss(F.log_softmax(valid_context, 1), valid_labels)
+    #         # test_cls_loss = self.loss(F.log_softmax(test_context, 1), test_labels)
+    #         #
+    #         # domain_cls_loss = (train_cls_loss + valid_cls_loss + test_cls_loss) / 3
+    #         #
+    #
+    #         # elif domain_adapt_mode== 'unsupervised':
+    #         #     self.predict_domain(sents,masks,labels,lens)
+    #         #     return domain_cls_loss
+    #
+    # # def predict_domain(self, sents, masks, labels, lens):
+    # # sents = self.cat_layer(sents, masks)
+    # # context = self.bilstm(sents, lens)  # batch X sentence_len X hidden_dim
+    # # att1_weight = F.softmax(self.attn1(context), dim=1)
+    # # domain_context = torch.mean(att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
+    # #                             dim=1)  # batch X hidden_dim
+    # #
+    # # train_labels = torch.zeros(labels.shape).type(labels.type())
+    # # train_labels[labels == 0] = 1
+    # #
+    # #
+    # # valid_labels = torch.zeros(labels.shape).type(labels.type())
+    # # valid_labels[labels == 1] = 1
+    # #
+    # # test_labels = torch.zeros(labels.shape).type(labels.type())
+    # # test_labels[labels == 2] = 1
+    # #
+    # # train_context = self.is_train(domain_context)
+    # # valid_context = self.is_valid(domain_context)
+    # # test_context = self.is_test(domain_context)
+    # #
+    # # train_labels_score,train_labels_idx  = torch.max(F.softmax(train_context, 1), 1)
+    # # train_labels_score,valid_labels_idx = torch.max(F.softmax(valid_context, 1), 1)
+    # # train_labels_score,valid_labels_idx = torch.max(F.softmax(test_context, 1), 1)
+    # #
+    # # scores = torch.cat((train_labels_score, train_labels_score, train_labels_score)).view(32, -1)
+    #
+    # # return
 
     def predict(self, sents, masks, sent_lens):
         if self.config.if_reset:  self.cat_layer.reset_binary()
