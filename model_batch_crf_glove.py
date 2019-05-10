@@ -254,7 +254,7 @@ class AspectSent(nn.Module):
         scores = self.feat2label(features)
 
         scores = F.log_softmax(scores, 1)  # Batch_size*label_size
-
+        labels = labels.type(torch.cuda.LongTensor)
         sentiment_cls_loss = self.loss(scores, labels)
 
         return sentiment_cls_loss, norm_pen
@@ -354,12 +354,13 @@ class AspectSent(nn.Module):
         if self.config.if_reset:  self.cat_layer.reset_binary()
         true_labels = None
         best_seqs_all = []
+        sent_vs_all = []
         for datum in [b, a, i]:
-            sents, masks, labels_orderd, lens, _, _, _, perm_idx = datum
-            sents, masks, labels_orderd, lens = sents.cuda(), masks.cuda(), labels_orderd.cuda(), lens.cuda()
+            sents, masks, labels_ordered, lens, _, _, _, perm_idx = datum
+            sents, masks, labels_ordered, lens = sents.cuda(), masks.cuda(), labels_ordered.cuda(), lens.cuda()
             sents = self.cat_layer(sents, masks, with_mask=False)
 
-            _, best_seqs, sent_vs_ordered = self.compute_scores(sents, masks, sent_lens, False)
+            _, best_seqs, sent_vs_ordered = self.compute_scores(sents, masks, lens, False)
             best_seqs_all.append(best_seqs)  # todo: order it
             sent_vs = torch.zeros(size=sent_vs_ordered.shape).cuda()  # batch X lstm_hidden
             true_labels = torch.zeros(size=labels_ordered.shape).cuda()
@@ -375,6 +376,7 @@ class AspectSent(nn.Module):
         scores = self.feat2label(features)
         _, pred_label = scores.max(1)
 
+        true_labels = true_labels.type(torch.cuda.LongTensor)
         # Modified by Richard Sun
         return pred_label, best_seqs_all, true_labels
 
