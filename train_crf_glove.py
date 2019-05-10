@@ -102,6 +102,30 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
     is_best = False
     logger.info("Start Experiment")
 
+    logger.info('pretrain sentiment..')
+    e_ = 0
+    for param in model.parameters():
+        param.requires_grad = True
+
+    parameters = filter(lambda p: p.requires_grad, model.parameters())
+    optimizer = create_opt(parameters, args)
+    if e_ % args.adjust_every == 0:
+        adjust_learning_rate(optimizer, e_, args)
+    loops = int(dg_train.data_len / args.batch_size)
+    for idx in range(loops):
+        sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(dg_train.get_ids_samples())
+        if args.if_gpu:
+            sent_vecs, mask_vecs = sent_vecs.cuda(device=args.gpu), mask_vecs.cuda(device=args.gpu)
+            label_list, sent_lens = label_list.cuda(device=args.gpu), sent_lens.cuda(device=args.gpu)
+        cls_loss, norm_pen = model(sent_vecs, mask_vecs, label_list, sent_lens)
+        cls_loss_value.update(cls_loss.item())
+
+        total_loss = cls_loss + norm_pen
+        model.zero_grad()
+        total_loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
+        optimizer.step()
+
     logger.info('training domain classifier')
     for e1_ in range(args.epoch):
         # if e_ % 20 < 15:
