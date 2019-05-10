@@ -196,7 +196,7 @@ class SimpleCat(nn.Module):
 
         #Use GloVe embedding
         if self.config.if_gpu:  
-            sent, mask = sent.cuda(), mask.cuda()
+            sent, mask = sent.cuda(device=self.config.gpu), mask.cuda(device=self.config.gpu)
         # to embeddings
         if is_elmo:
             sent_vec = sent # batch_siz*sent_len * dim
@@ -217,7 +217,7 @@ class SimpleCat(nn.Module):
         if is_pos:
             batch_size, max_len, _ = sent_vec.size()
             pos = torch.arange(0, max_len)
-            if self.config.if_gpu:pos = pos.cuda()
+            if self.config.if_gpu:pos = pos.cuda(device=self.config.gpu)
             pos = pos.expand(batch_size, max_len)
             pos_vec = self.position_enc(pos)
             sent_vec += pos_vec
@@ -273,7 +273,7 @@ class SimpleCat(nn.Module):
         position_enc[1:, 0::2] = np.sin(position_enc[1:, 0::2]) # dim 2i
         position_enc[1:, 1::2] = np.cos(position_enc[1:, 1::2]) # dim 2i+1
         pos_emb = torch.from_numpy(position_enc).type(torch.FloatTensor)
-        if self.config.if_gpu: pos_emb = pos_emb.cuda()
+        if self.config.if_gpu: pos_emb = pos_emb.cuda(device=self.config.gpu)
         return pos_emb
 
 
@@ -299,7 +299,7 @@ class GloveMaskCat(nn.Module):
 
         #Use GloVe embedding
         if self.config.if_gpu:  
-            sent, mask = sent.cuda(), mask.cuda()
+            sent, mask = sent.cuda(device=self.config.gpu), mask.cuda(device=self.config.gpu)
         # to embeddings
         sent_vec = self.word_embed(sent) # batch_siz*sent_len * dim
         #Concatenate each word embedding with target word embeddings' average
@@ -363,7 +363,7 @@ class ContextTargetCat(nn.Module):
 
 
         if self.config.if_gpu:  
-            sent, mask = sent.cuda(), mask.cuda()
+            sent, mask = sent.cuda(device=self.config.gpu), mask.cuda(device=self.config.gpu)
         # # to embeddings
         
         batch_size, max_len, _ = sent.size()

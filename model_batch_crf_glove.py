@@ -232,7 +232,7 @@ class AspectSent(nn.Module):
 
                 domain_specific_view = domain_specific_context[(labels_score > threshhold) & (labels_idx == labels)]
                 domain_share_view = domain_share_context[(labels_score > threshhold) & (labels_idx == labels)]
-                unsuper_loss = -torch.ones(1).cuda()
+                unsuper_loss = -torch.ones(1).cuda(device=self.config.gpu)
                 if len(domain_specific_view) > 0:
                     unsuper_loss = torch.mean(1 - F.cosine_similarity(domain_specific_view, domain_share_view))
 
