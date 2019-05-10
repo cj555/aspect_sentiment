@@ -109,7 +109,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
         if e_ % args.adjust_every == 0:
             adjust_learning_rate(optimizer, e_, args)
         loops = int(dg_train.data_len / args.batch_size)
-        for idx in range(loops):
+        for idx in range(loops)[:2]:
             b, a, i = next(dg_train.get_ids_bio_samples())
 
             # sent_vecs, mask_vecs, label_list, sent_lens, _, _, _, perm_idx = b
@@ -119,7 +119,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
             #     sent_vecs, mask_vecs = sent_vecs.cuda(), mask_vecs.cuda()
             #     label_list, sent_lens = label_list.cuda(), sent_lens.cuda()
             # cls_loss, norm_pen = model(sent_vecs, mask_vecs, label_list, sent_lens)
-            cls_loss, norm_pen = model(b,a,i)
+            cls_loss, norm_pen = model(b, a, i)
 
             cls_loss_value.update(cls_loss.item())
 
@@ -131,18 +131,16 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
 
             if idx % args.print_freq == 0:
                 model.eval()
-                domain_cls_loss, unsuper_loss = model(sent_vecs, mask_vecs, label_list, sent_lens)
+                # domain_cls_loss, unsuper_loss = model(sent_vecs, mask_vecs, label_list, sent_lens)
 
                 print(
                     "exp:{}, e_:{}, "
                     "task: sentiment cls, "
                     "sentiment cls loss {:.3f} "
-                    "with penalty {:.3f},"
-                    "domain_cls_loss:{:.2f}, "
-                    "da_loss:{:.2f}".format(exp,
-                                            e_,
-                                            cls_loss.item(),
-                                            norm_pen.item(), domain_cls_loss.item(), unsuper_loss.item()))
+                    "with penalty {:.3f},".format(exp,
+                                                  e_,
+                                                  cls_loss.item(),
+                                                  norm_pen.item()))
                 model.train()
                 # logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
                 # tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
@@ -283,11 +281,12 @@ def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
     print("transitions matrix ", model.inter_crf.transitions.data)
     while dr_test.index < dr_test.data_len:
         b, a, i = next(dr_test.get_ids_bio_samples())
-        sent, mask, label, sent_len, texts, targets, _, perm_idx = b
-        if args.if_gpu:
-            sent, mask, sent_len, label = sent.cuda(), mask.cuda(), sent_len.cuda(), label.cuda()
-        pred_label, best_seq = model.predict(sent, mask, sent_len)
+        # sent, mask, label, sent_len, texts, targets, _, perm_idx = b
+        # if args.if_gpu:
+        #     sent, mask, sent_len, label = sent.cuda(), mask.cuda(), sent_len.cuda(), label.cuda()
+        # pred_label, best_seq = model.predict(sent, mask, sent_len)
 
+        pred_label, best_seq = model.predict(b, a, i)
         # Compute correct predictions
         correct_count += sum(pred_label == label).item()
 

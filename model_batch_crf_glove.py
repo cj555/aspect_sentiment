@@ -67,14 +67,14 @@ class AspectSent(nn.Module):
         self.config = config
 
         input_dim = config.l_hidden_size
-        kernel_num = config.l_hidden_size * 3
+        kernel_num = config.l_hidden_size
         self.conv = nn.Conv1d(input_dim, kernel_num, 3, padding=1)
         # self.conv = nn.Conv1d(input_dim, kernel_num, 3, dilation=2, padding=2)
 
         self.bilstm = biLSTM(config)
         self.feat2tri = nn.Linear(kernel_num, 2 + 2)
         self.inter_crf = LinearChainCrf(2 + 2)
-        self.feat2label = nn.Linear(kernel_num, 3)
+        self.feat2label = nn.Linear(kernel_num * 3, 3)
         self.domaincls = nn.Linear(config.l_hidden_size, 3)  # train,dev,test
         # self.is_valid = nn.Linear(config.l_hidden_size, 2)  # train,dev,test
         # self.is_test = nn.Linear(config.l_hidden_size, 2)
@@ -227,15 +227,18 @@ class AspectSent(nn.Module):
         pena = 0
         s_prob_norm = 0
         sent_vs_all = []
+        labels = None
         for datum in [b, a, i]:
-            sents, masks, labels, lens, _, _, _, perm_idx = datum
-            sents, masks, labels, lens = sents.cuda(), masks.cuda(), labels.cuda(), lens.cuda()
+            sents, masks, labels_ordered, lens, _, _, _, perm_idx = datum
+            sents, masks, labels_ordered, lens = sents.cuda(), masks.cuda(), labels_ordered.cuda(), lens.cuda()
             sents = self.cat_layer(sents, masks, with_mask=False)
-            scores, s_prob, sent_vs_ordered = self.compute_scores(sents, masks, lens)
+            _, s_prob, sent_vs_ordered = self.compute_scores(sents, masks, lens)
             sent_vs = torch.zeros(size=sent_vs_ordered.shape).cuda()  # batch X lstm_hidden
+            labels =torch.zeros(size=labels_ordered.shape).cuda()
             for i in range(sent_vs.shape[0]):
                 sent_vs[perm_idx[i]] = sent_vs_ordered[i]
-
+                labels[perm_idx[i]] = labels_ordered[i]
+            print(labels)
             # reorder the features
             sent_vs_all.append(sent_vs)
             s_prob_norm += torch.stack([s.norm(1) for s in s_prob]).mean()
@@ -347,14 +350,29 @@ class AspectSent(nn.Module):
     #
     # # return
 
-    def predict(self, sents, masks, sent_lens):
+    def predict(self, b, a, i):
         if self.config.if_reset:  self.cat_layer.reset_binary()
-        sents = self.cat_layer(sents, masks)
-        scores, best_seqs = self.compute_scores(sents, masks, sent_lens, False)
+
+        best_seqs_all = []
+        for datum in [b, a, i]:
+            sents, masks, labels, lens, _, _, _, perm_idx = datum
+            sents, masks, labels, lens = sents.cuda(), masks.cuda(), labels.cuda(), lens.cuda()
+            sents = self.cat_layer(sents, masks, with_mask=False)
+            _, best_seqs, sent_vs_ordered = self.compute_scores(sents, masks, sent_lens, False)
+            best_seqs_all.append(best_seqs) # todo: order it
+            sent_vs = torch.zeros(size=sent_vs_ordered.shape).cuda()  # batch X lstm_hidden
+            for i in range(sent_vs.shape[0]):
+                sent_vs[perm_idx[i]] = sent_vs_ordered[i]
+
+            # reorder the features
+            sent_vs_all.append(sent_vs)
+
+        features = torch.cat(sent_vs_all, dim=1)
+        scores = self.feat2label(features)
         _, pred_label = scores.max(1)
 
         # Modified by Richard Sun
-        return pred_label, best_seqs
+        return pred_label, best_seqs_all
 
 
 def convert_mask_index(masks):
