@@ -43,9 +43,9 @@ parser.add_argument('--e', '--evaluate', action='store_true')
 parser.add_argument('--da-multitask-embed', action='store_true')
 parser.add_argument('--gpu', default=1, type=int)
 
-
 args = parser.parse_args()
 torch.cuda.set_device(args.gpu)
+
 
 # tool functions
 def adjust_learning_rate(optimizer, epoch, args):
@@ -143,11 +143,12 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
             # test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
             # model.train()
 
+    logger.info('training embedding classifier')
     for e1_ in range(args.epoch)[:3]:
         # elif e_ % 14 >= 8 and e_ % 14 < 11:
         # for e_ in range(args.epoch):
         model.train()
-        logger.info('training embedding classifier')
+
         for param in model.parameters():
             param.requires_grad = False
         for param in model.bilstm.parameters():
@@ -181,7 +182,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                     "da_loss:{:.2f}".format(exp, e1_,
                                             domain_cls_loss.item(),
                                             unsuper_loss.item()))
-
+    logger.info('training sentiment classifier')
     for e_ in range(args.epoch)[:2]:
         # logger.info('training sentiment!!')
         for param in model.parameters():
@@ -288,7 +289,8 @@ def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
     while dr_test.index < dr_test.data_len:
         sent, mask, label, sent_len, texts, targets, _ = next(dr_test.get_ids_samples())
         if args.if_gpu:
-            sent, mask, sent_len, label = sent.cuda(device=args.gpu), mask.cuda(device=args.gpu), sent_len.cuda(device=args.gpu), label.cuda(device=args.gpu)
+            sent, mask, sent_len, label = sent.cuda(device=args.gpu), mask.cuda(device=args.gpu), sent_len.cuda(
+                device=args.gpu), label.cuda(device=args.gpu)
         pred_label, best_seq = model.predict(sent, mask, sent_len)
 
         # Compute correct predictions
