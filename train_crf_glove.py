@@ -145,7 +145,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                 # logger.info("i_iter {}/{} cls_loss: {:3f}".format(idx, loops, cls_loss_value.avg))
                 # tb_logger.add_scalar("train_loss", idx + e_ * loops, cls_loss_value.avg)
         model.eval()
-        test_f1, valid_f1 = update_test_model(args, best_valid_f1, dg_test, dg_valid, e_, exp, model,
+        test_f1, best_valid_f1 = update_test_model(args, best_valid_f1, dg_test, dg_valid, e_, exp, model,
                                               test_f1)
         # train_acc, train_f1 = evaluate_test(dg_train_eval, model, args, False, mode='train')
 
@@ -234,7 +234,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
         #
         # best_train_f1 = max(train_f1, best_train_f1)
         # best_valid_f1 = max(valid_f1, best_valid_f1)
-        # logger.info("Best Test f1_score: {}".format(test_f1))
+        logger.info("Best Test f1_score: {}".format(test_f1))
 
         # test_f1 = update_test_model(args, best_f1, dg_test, dg_valid, e_, exp, model, test_f1)
         # model.train()
