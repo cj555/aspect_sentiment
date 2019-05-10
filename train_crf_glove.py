@@ -286,7 +286,7 @@ def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
         #     sent, mask, sent_len, label = sent.cuda(), mask.cuda(), sent_len.cuda(), label.cuda()
         # pred_label, best_seq = model.predict(sent, mask, sent_len)
 
-        pred_label, best_seq = model.predict(b, a, i)
+        pred_label, best_seq,label = model.predict(b, a, i)
         # Compute correct predictions
         correct_count += sum(pred_label == label).item()
 

@@ -234,11 +234,11 @@ class AspectSent(nn.Module):
             sents = self.cat_layer(sents, masks, with_mask=False)
             _, s_prob, sent_vs_ordered = self.compute_scores(sents, masks, lens)
             sent_vs = torch.zeros(size=sent_vs_ordered.shape).cuda()  # batch X lstm_hidden
-            labels =torch.zeros(size=labels_ordered.shape).cuda()
+            labels = torch.zeros(size=labels_ordered.shape).cuda()
             for i in range(sent_vs.shape[0]):
                 sent_vs[perm_idx[i]] = sent_vs_ordered[i]
                 labels[perm_idx[i]] = labels_ordered[i]
-            print(labels)
+            # print(labels)
             # reorder the features
             sent_vs_all.append(sent_vs)
             s_prob_norm += torch.stack([s.norm(1) for s in s_prob]).mean()
@@ -352,17 +352,21 @@ class AspectSent(nn.Module):
 
     def predict(self, b, a, i):
         if self.config.if_reset:  self.cat_layer.reset_binary()
-
+        true_labels = None
         best_seqs_all = []
         for datum in [b, a, i]:
-            sents, masks, labels, lens, _, _, _, perm_idx = datum
-            sents, masks, labels, lens = sents.cuda(), masks.cuda(), labels.cuda(), lens.cuda()
+            sents, masks, labels_orderd, lens, _, _, _, perm_idx = datum
+            sents, masks, labels_orderd, lens = sents.cuda(), masks.cuda(), labels_orderd.cuda(), lens.cuda()
             sents = self.cat_layer(sents, masks, with_mask=False)
+
             _, best_seqs, sent_vs_ordered = self.compute_scores(sents, masks, sent_lens, False)
-            best_seqs_all.append(best_seqs) # todo: order it
+            best_seqs_all.append(best_seqs)  # todo: order it
             sent_vs = torch.zeros(size=sent_vs_ordered.shape).cuda()  # batch X lstm_hidden
+            true_labels = torch.zeros(size=labels_ordered.shape).cuda()
+
             for i in range(sent_vs.shape[0]):
                 sent_vs[perm_idx[i]] = sent_vs_ordered[i]
+                true_labels[perm_idx[i]] = labels_ordered[i]
 
             # reorder the features
             sent_vs_all.append(sent_vs)
@@ -372,7 +376,7 @@ class AspectSent(nn.Module):
         _, pred_label = scores.max(1)
 
         # Modified by Richard Sun
-        return pred_label, best_seqs_all
+        return pred_label, best_seqs_all, true_labels
 
 
 def convert_mask_index(masks):
