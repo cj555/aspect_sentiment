@@ -194,6 +194,7 @@ class AspectSent(nn.Module):
 
             #TODO:
             pad_id = max(sents[:, -1])
+
             target_idx = [(masks[i]==1).nonzero().view(-1) for i in range(masks.shape[0])]
             target_sent = [sents[i][tpos[0]:(tpos[-1]+1)] for i,tpos in enumerate(target_idx)]
             target_len = torch.LongTensor([len(x) for x in target_sent]).cuda()

@@ -115,7 +115,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                 adjust_learning_rate(optimizer, e_, args)
             loops = int(dg_train.data_len / args.batch_size)
             for idx in range(loops):
-                sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(dg_train.get_ids_samples())
+                sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(dg_train.get_ids_bio_samples())
                 if args.if_gpu:
                     sent_vecs, mask_vecs = sent_vecs.cuda(), mask_vecs.cuda()
                     label_list, sent_lens = label_list.cuda(), sent_lens.cuda()

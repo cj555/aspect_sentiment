@@ -15,6 +15,7 @@ from collections import Counter
 ##Added by Richard Sun
 from allennlp.modules.elmo import Elmo, batch_to_ids
 import en_core_web_sm
+import copy
 
 nlp = en_core_web_sm.load()
 
@@ -611,6 +612,7 @@ class data_generator:
         batch_size = self.config.batch_size
         select_index = np.random.choice(len(all_triples), batch_size, replace=False)
         select_trip = [all_triples[i] for i in select_index]
+
         return select_trip
 
     def generate_balanced_sample(self, all_triples):
@@ -655,17 +657,19 @@ class data_generator:
     def reset_samples(self):
         self.index = 0
 
-    def pad_data(self, sents, masks, labels, texts, targets, target_ids):
+    def pad_data(self, sents, masks, labels, texts, targets, target_ids, isbio=False):
         '''
         Padding sentences to same size
         '''
         sent_lens = [len(tokens) for tokens in sents]
+        mask_lens = [len(tokens) for tokens in masks]
         sent_lens = torch.LongTensor(sent_lens)
         label_list = torch.LongTensor(labels)
+        max_mask_len = max(mask_lens)
         max_len = max(sent_lens)
         batch_size = len(sent_lens)
         # Padding mask
-        mask_vecs = np.zeros([batch_size, max_len])
+        mask_vecs = np.zeros([batch_size, max_mask_len])
         mask_vecs = torch.LongTensor(mask_vecs)
         for i, mask in enumerate(masks):
             mask_vecs[i, :len(mask)] = torch.LongTensor(mask)
@@ -681,7 +685,10 @@ class data_generator:
         texts = [texts[i.item()] for i in perm_idx]
         targets = [targets[i.item()] for i in perm_idx]
         target_ids = [target_ids[i.item()] for i in perm_idx]
-        return sent_ids, mask_vecs, label_list, sent_lens, texts, targets, target_ids
+        if not isbio:
+            return sent_ids, mask_vecs, label_list, sent_lens, texts, targets, target_ids
+        else:
+            return sent_ids, mask_vecs, label_list, sent_lens, texts, targets, target_ids, perm_idx
 
     def get_ids_samples(self, is_balanced=False):
         '''
@@ -731,6 +738,96 @@ class data_generator:
                                                                                                        target_ids)
                 self.index += len(samples)
         yield sent_ids, mask_vecs, label_list, sent_lens, texts, targets, target_ids
+
+    def _tobio(self, select_trip):
+        i_triples = copy.deepcopy(select_trip)
+        for item in i_triples:
+            item[0] = copy.deepcopy(item[5])
+            item[3] = copy.deepcopy(item[6])
+
+        b_triples = copy.deepcopy(select_trip)
+        a_triples = copy.deepcopy(select_trip)
+        for i, item in enumerate(b_triples):
+            sent_idx_str = ','.join([str(x) for x in item[3]])
+            aspect_idx_str = ','.join([str(x) for x in item[6]])
+            sub_str = sent_idx_str.split(aspect_idx_str + ',')
+            bstr = ',' + ','.join(sub_str[0::2])
+            afstr = ','.join(sub_str[1::2]) + '[END]'
+            # b_triples[i][3] = [int(x) for x in bstr.strip(',').split(',')]
+            # a_triples[i][3] = [int(x) for x in afstr.strip(',').split(',')]
+            b_triples[i][3] = [int(y) for y in
+                               sum([x.strip(',').split(',') for x in sent_idx_str.split(aspect_idx_str)[:-1]], [])
+                               if y != '']
+            a_triples[i][3] = [int(y) for y in
+                               sum([x.strip(',').split(',') for x in sent_idx_str.split(aspect_idx_str)[1:]], [])
+                               if y != '']
+
+        return b_triples, a_triples, i_triples, select_trip
+
+    def get_ids_bio_samples(self, is_balanced=False):
+        '''
+        Get samples including ids of words, labels
+        '''
+        self.is_training = False
+        my_data = []
+        if self.is_training:
+            if is_balanced:
+                samples = self.generate_balanced_sample(self.data_batch)
+            else:
+                samples = self.generate_sample(self.data_batch)
+                b, a, i, _ = self._tobio(samples)
+
+                for s in [b, a, i]:
+                    tokens, mask_list, label_list, token_ids, texts, targets, target_ids = zip(*s)
+                    # Sorted according to the length
+                    # sent_ids, mask_vecs, label_list, sent_lens, texts, targets, target_ids,perm_idx
+                    my_data.append(self.pad_data(
+                        token_ids,
+                        mask_list,
+                        label_list,
+                        texts,
+                        targets,
+                        target_ids, isbio=True))
+        else:
+            if self.index == self.data_len:
+                print('Testing Over!')
+            # First get batches of testing data
+            if self.data_len - self.index >= self.config.batch_size:
+                # print('Testing Sample Index:', self.index)
+                start = self.index
+                end = start + self.config.batch_size
+                samples = self.data_batch[start: end]
+                self.index = end
+                b, a, i, _ = self._tobio(samples)
+                for s in [b, a, i]:
+                    tokens, mask_list, label_list, token_ids, texts, targets, target_ids = zip(*s)
+                    # Sorting happens here
+                    my_data.append(self.pad_data(token_ids,
+                                                 mask_list,
+                                                 label_list,
+                                                 texts,
+                                                 targets,
+                                                 target_ids,
+                                                 isbio=True))
+
+            else:  # Then generate testing data one by one
+                samples = self.data_batch[self.index:]
+                if self.index == self.data_len - 1:  # if only one sample left
+                    samples = [samples]
+                b, a, i, _ = self._tobio(samples)
+                for s in [b, a, i]:
+                    tokens, mask_list, label_list, token_ids, texts, targets, target_ids = zip(*s)
+                    # Sorting happens here
+                    my_data.append(self.pad_data(token_ids,
+                                                 mask_list,
+                                                 label_list,
+                                                 texts,
+                                                 targets,
+                                                 target_ids,
+                                                 isbio=True))
+
+                self.index += len(samples)
+        yield my_data
 
     def get_elmo_samples(self, is_with_texts=False):
         '''
