@@ -103,7 +103,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
     logger.info("Start Experiment")
 
     logger.info('training domain classifier')
-    for e1_ in range(args.epoch)[:1]:
+    for e1_ in range(args.epoch):
         # if e_ % 20 < 15:
         model.train()
         for param in model.parameters():
@@ -183,7 +183,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
                                             domain_cls_loss.item(),
                                             unsuper_loss.item()))
     logger.info('training sentiment classifier')
-    for e_ in range(args.epoch)[:2]:
+    for e_ in range(args.epoch):
         # logger.info('training sentiment!!')
         for param in model.parameters():
             param.requires_grad = True
