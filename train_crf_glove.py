@@ -297,12 +297,12 @@ def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
         indices = torch.nonzero(pred_label != label)
         if len(indices) > 0:
             indices = indices.squeeze(1)
-        if sample_out:
-            with open(mistake_samples, 'a') as f:
-                for i in indices:
-                    line = texts[i] + '###' + ' '.join(targets[i]) + '###' + str(label[i]) + '###' + str(
-                        pred_label[i]) + '\n'
-                    f.write(line)
+        # if sample_out:
+        #     with open(mistake_samples, 'a') as f:
+        #         for i in indices:
+        #             line = texts[i] + '###' + ' '.join(targets[i]) + '###' + str(label[i]) + '###' + str(
+        #                 pred_label[i]) + '\n'
+        #             f.write(line)
 
     acc = correct_count * 1.0 / dr_test.data_len
     f1 = f1_score(true_labels, pred_labels, average='macro')
