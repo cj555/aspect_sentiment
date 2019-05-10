@@ -109,7 +109,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
         if e_ % args.adjust_every == 0:
             adjust_learning_rate(optimizer, e_, args)
         loops = int(dg_train.data_len / args.batch_size)
-        for idx in range(loops)[:2]:
+        for idx in range(loops):
             b, a, i = next(dg_train.get_ids_bio_samples())
 
             # sent_vecs, mask_vecs, label_list, sent_lens, _, _, _, perm_idx = b
@@ -286,7 +286,7 @@ def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
         #     sent, mask, sent_len, label = sent.cuda(), mask.cuda(), sent_len.cuda(), label.cuda()
         # pred_label, best_seq = model.predict(sent, mask, sent_len)
 
-        pred_label, best_seq,label = model.predict(b, a, i)
+        pred_label, best_seq, label = model.predict(b, a, i)
         # Compute correct predictions
         correct_count += sum(pred_label == label).item()
 
