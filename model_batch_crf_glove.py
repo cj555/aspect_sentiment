@@ -74,7 +74,7 @@ class AspectSent(nn.Module):
         self.domaincls = nn.Linear(config.l_hidden_size, 3)  # train,dev,test
         # self.is_valid = nn.Linear(config.l_hidden_size, 2)  # train,dev,test
         # self.is_test = nn.Linear(config.l_hidden_size, 2)
-        self.attn1 = nn.Linear(config.l_hidden_size, 1)
+        self.attn1 = nn.Linear(config.l_hidden_size, config.l_hidden_size)
 
         self.loss = nn.NLLLoss()
 
@@ -172,7 +172,7 @@ class AspectSent(nn.Module):
         best_latent_seqs = self.inter_crf.decode(feats, word_mask.type_as(feats))
 
         if is_training:
-            return label_scores, select_polarities
+            return label_scores, select_polarities,sent_vs
         else:
             return label_scores, best_latent_seqs
 
@@ -189,10 +189,12 @@ class AspectSent(nn.Module):
         # scores: batch_size*label_size
         # s_prob:batch_size*sent_len
 
+        if self.config.if_reset:  self.cat_layer.reset_binary()
+        sents = self.cat_layer(sents, masks)
+        scores, s_prob, sent_v = self.compute_scores(sents, masks, lens)
+
         if not domain_adapt:
-            if self.config.if_reset:  self.cat_layer.reset_binary()
-            sents = self.cat_layer(sents, masks)
-            scores, s_prob = self.compute_scores(sents, masks, lens)
+
             s_prob_norm = torch.stack([s.norm(1) for s in s_prob]).mean()
 
             pena = F.relu(self.inter_crf.transitions[1, 0] - self.inter_crf.transitions[0, 0]) + \
@@ -209,11 +211,9 @@ class AspectSent(nn.Module):
             return domain_cls_loss, norm_pen
         else:
 
-            sents = self.cat_layer(sents, masks)
-            context = self.bilstm(sents, lens)  # batch X sentence_len X hidden_dim
-            att1_weight = F.softmax(self.attn1(context), dim=1)
-            domain_specific_context = torch.mean(att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
-                                                 dim=1)  # batch X hidden_dim
+
+            att1_weight = F.softmax(self.attn1(sent_v), dim=1) # Batch*lstm_hidden
+            domain_specific_context =att1_weight * sent_v  # batch X hidden_dim
 
             domain_cls_score = self.domaincls(domain_specific_context)
             if domain_adapt_mode == 'cls':
@@ -223,12 +223,11 @@ class AspectSent(nn.Module):
                 domain_cls_loss = self.loss(F.log_softmax(domain_cls_score, 1), labels)
                 labels_score, labels_idx = torch.max(F.softmax(domain_cls_score, 1), 1)
 
+
                 ## unsupervised
                 threshhold = 0.5
                 inverse_att1_weight = F.softmax(1 / (att1_weight + 1e-5), 1)
-                domain_share_context = torch.mean(
-                    inverse_att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
-                    dim=1)  # batch X hidden_dim
+                domain_share_context = inverse_att1_weight * sent_v  # batch X hidden_dim
 
                 domain_specific_view = domain_specific_context[(labels_score > threshhold) & (labels_idx == labels)]
                 domain_share_view = domain_share_context[(labels_score > threshhold) & (labels_idx == labels)]
