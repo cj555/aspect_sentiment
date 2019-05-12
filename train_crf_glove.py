@@ -436,7 +436,7 @@ if __name__ == "__main__":
             for test in test_fi:
                 test_key = test.split('/')[-1].split('_')[1]
                 # if valid != test and train_key != test_key and train_key != valid_key and valid_key != train_key:
-                if valid_key == test_key:
+                if valid_key == test_key and valid_key!= train_key:
                     exp += 1
                     main(train_path=traf, valid_path=valid, test_path=test, exp=exp)
 

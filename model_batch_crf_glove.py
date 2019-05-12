@@ -166,8 +166,8 @@ class AspectSent(nn.Module):
         # sent_vs = [self.dropout(sent_v) for sent_v in sent_vs]
         # label_scores = [self.feat2label(sent_v).squeeze(0) for sent_v in sent_vs]
         # label_scores = torch.stack(label_scores)
-        sent_vs = self.dropout(sent_vs)
-        label_scores = self.feat2label(sent_vs)
+        sent_vs1 = self.dropout(sent_vs)
+        label_scores = self.feat2label(sent_vs1)
 
         best_latent_seqs = self.inter_crf.decode(feats, word_mask.type_as(feats))
 
