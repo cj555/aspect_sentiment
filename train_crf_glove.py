@@ -215,7 +215,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
 
         parameters = filter(lambda p: p.requires_grad, model.parameters())
         optimizer = create_opt(parameters, args)
-        if e % args.adjust_every == 0:
+        if e_ % args.adjust_every == 0:
             adjust_learning_rate(optimizer, e_, args)
         loops = int(dg_da_train.data_len / args.batch_size)
         for idx in range(loops):
