@@ -96,16 +96,17 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
     best_valid_f1 = 0
     best_train_f1 = 0
     test_f1 = 0
-    model.train()
+
     is_best = False
     logger.info("Start Experiment")
-
+    for param in model.parameters():
+        param.requires_grad = True
+    parameters = filter(lambda p: p.requires_grad, model.parameters())
+    optimizer = create_opt(parameters, args)
+    model.train()
     for e_ in range(args.epoch):
         # logger.info('training sentiment!!')
-        for param in model.parameters():
-            param.requires_grad = True
-        parameters = filter(lambda p: p.requires_grad, model.parameters())
-        optimizer = create_opt(parameters, args)
+
         if e_ % args.adjust_every == 0:
             adjust_learning_rate(optimizer, e_, args)
         loops = int(dg_train.data_len / args.batch_size)
@@ -261,9 +262,10 @@ def update_test_model(args, best_valid_f1, dg_test, dg_valid, e_, exp, model, te
         test_acc, test_f1 = evaluate_test(dg_test, model, args, output_samples, mode='test')
         logger.info("exp{}, epoch {}, Test f1_score: {}".format(exp, e_, test_f1))
 
-        model.train()
+
         is_best = False
-    return test_f1, valid_f1
+    model.train()
+    return test_f1, max(valid_f1,best_valid_f1)
 
 
 def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
