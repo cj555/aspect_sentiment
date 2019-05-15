@@ -138,6 +138,12 @@ class AspectSent(nn.Module):
         #         context = context.transpose(1, 2)
         context = torch.tanh(context)
 
+        att1_weight = F.softmax(self.attn1(context), dim=1)
+        domain_specific_context = att1_weight.expand(-1, -1,
+                                                     self.config.l_hidden_size) * context  # batch X seq_len X hidden_dim
+        inverse_att1_weight = F.softmax(1 / (att1_weight + 1e-5), 1)
+        domain_share_context = inverse_att1_weight.expand(-1, -1, self.config.l_hidden_size) * context
+
         batch_size, max_len, hidden_dim = context.size()
 
         # Expand dimension for concatenation
@@ -145,6 +151,22 @@ class AspectSent(nn.Module):
         target_emb_avg_exp = target_emb_avg.expand(max_len, batch_size, hidden_dim)
         target_emb_avg_exp = target_emb_avg_exp.transpose(0, 1)  # Batch_size*max_len*embedding
 
+        best_latent_seqs, label_scores, select_polarities = self._compute_crf_scores(batch_size, context, lens,
+                                                                                     max_len, target_emb_avg_exp)
+
+        _, domain_share_label_scores, _ = self._compute_crf_scores(batch_size, domain_share_context, lens,
+                                                                   max_len, target_emb_avg_exp)
+        _, domain_specific_label_scores, _ = self._compute_crf_scores(batch_size, domain_specific_context, lens,
+                                                                      max_len, target_emb_avg_exp)
+
+        domain_disagreement = domain_share_label_scores - domain_specific_label_scores
+
+        if is_training:
+            return label_scores, select_polarities, domain_disagreement
+        else:
+            return label_scores, best_latent_seqs
+
+    def _compute_crf_scores(self, batch_size, context, lens, max_len, target_emb_avg_exp):
         ###Addition model
         u = target_emb_avg_exp
         context = context + u  # Batch_size*max_len*embedding
@@ -162,21 +184,15 @@ class AspectSent(nn.Module):
         sent_vs = [torch.mm(sp.unsqueeze(0), context[i, :lens[i], :]) for i, sp in enumerate(select_polarities)]
         sent_vs = [sv / gamma for sv, gamma in zip(sent_vs, gammas)]  # normalization
         sent_vs = torch.cat(sent_vs)  # batch_size, hidden_size
-
         # sent_vs = [self.dropout(sent_v) for sent_v in sent_vs]
         # label_scores = [self.feat2label(sent_v).squeeze(0) for sent_v in sent_vs]
         # label_scores = torch.stack(label_scores)
         sent_vs = self.dropout(sent_vs)
         label_scores = self.feat2label(sent_vs)
-
         best_latent_seqs = self.inter_crf.decode(feats, word_mask.type_as(feats))
+        return best_latent_seqs, label_scores, select_polarities
 
-        if is_training:
-            return label_scores, select_polarities
-        else:
-            return label_scores, best_latent_seqs
-
-    def forward(self, sents, masks, labels, lens, domain_adapt=False, domain_adapt_mode='cls'):
+    def forward(self, sents, masks, labels, lens, mode='sent_cls'):
         """
         inputs are list of list for the convenince of top CRF
         :param sents: a list of sentences， batch_size*len*emb_dim
@@ -188,11 +204,11 @@ class AspectSent(nn.Module):
 
         # scores: batch_size*label_size
         # s_prob:batch_size*sent_len
-
-        if not domain_adapt:
-            if self.config.if_reset:  self.cat_layer.reset_binary()
-            sents = self.cat_layer(sents, masks)
-            scores, s_prob = self.compute_scores(sents, masks, lens)
+        if self.config.if_reset:  self.cat_layer.reset_binary()
+        sents = self.cat_layer(sents, masks)
+        # mode = 'da'
+        if mode == 'sent_cls':
+            scores, s_prob, domain_disagreement = self.compute_scores(sents, masks, lens)
             s_prob_norm = torch.stack([s.norm(1) for s in s_prob]).mean()
 
             pena = F.relu(self.inter_crf.transitions[1, 0] - self.inter_crf.transitions[0, 0]) + \
@@ -204,39 +220,56 @@ class AspectSent(nn.Module):
 
             scores = F.log_softmax(scores, 1)  # Batch_size*label_size
 
-            domain_cls_loss = self.loss(scores, labels)
+            sent_cls_loss = self.loss(scores, labels)
 
-            return domain_cls_loss, norm_pen
-        else:
+            return sent_cls_loss, norm_pen
 
-            sents = self.cat_layer(sents, masks)
+        elif mode == 'domain_cls':
+            # if self.config.if_reset:  self.cat_layer.reset_binary()
+            # sents = self.cat_layer(sents, masks)
             context = self.bilstm(sents, lens)  # batch X sentence_len X hidden_dim
+            context = torch.tanh(context)
             att1_weight = F.softmax(self.attn1(context), dim=1)
             domain_specific_context = torch.mean(att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
                                                  dim=1)  # batch X hidden_dim
 
             domain_cls_score = self.domaincls(domain_specific_context)
-            if domain_adapt_mode == 'cls':
 
-                ## domain classification
+            # if domain_adapt_mode == 'cls':
 
-                domain_cls_loss = self.loss(F.log_softmax(domain_cls_score, 1), labels)
-                labels_score, labels_idx = torch.max(F.softmax(domain_cls_score, 1), 1)
+            ## domain classification
 
-                ## unsupervised
-                threshhold = 0.5
-                inverse_att1_weight = F.softmax(1 / (att1_weight + 1e-5), 1)
-                domain_share_context = torch.mean(
-                    inverse_att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
-                    dim=1)  # batch X hidden_dim
+            domain_cls_loss = self.loss(F.log_softmax(domain_cls_score, 1), labels)
+            unsuper_loss = torch.zeros(1).cuda(device=self.config.gpu)
+            return domain_cls_loss, unsuper_loss
+        elif mode == 'da':
+            context = self.bilstm(sents, lens)  # batch X sentence_len X hidden_dim
+            context = torch.tanh(context)
+            att1_weight = F.softmax(self.attn1(context), dim=1)
+            domain_specific_context = torch.mean(att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
+                                                 dim=1)  # batch X hidden_dim
 
-                domain_specific_view = domain_specific_context[(labels_score > threshhold) & (labels_idx == labels)]
-                domain_share_view = domain_share_context[(labels_score > threshhold) & (labels_idx == labels)]
-                unsuper_loss = -torch.ones(1).cuda(device=self.config.gpu)
-                if len(domain_specific_view) > 0:
-                    unsuper_loss = torch.mean(1 - F.cosine_similarity(domain_specific_view, domain_share_view))
+            domain_cls_score = self.domaincls(domain_specific_context)
+            domain_cls_loss = self.loss(F.log_softmax(domain_cls_score, 1), labels)
 
-                return domain_cls_loss, unsuper_loss
+            labels_score, labels_idx = torch.max(F.softmax(domain_cls_score, 1), 1)
+
+            ## unsupervised
+            threshhold = self.config.sentagree_thresh
+            # inverse_att1_weight = F.softmax(1 / (att1_weight + 1e-5), 1)
+            # domain_share_context = torch.mean(
+            #     inverse_att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
+            #     dim=1)  # batch X hidden_dim
+
+            # domain_specific_view = domain_specific_context[(labels_score > threshhold) & (labels_idx == labels)]
+            # domain_share_view = domain_share_context[(labels_score > threshhold) & (labels_idx == labels)]
+            unsuper_loss = torch.zeros(1).cuda(device=self.config.gpu)
+            if torch.sum((labels_score > threshhold) & (labels_idx == labels)) > 0:
+                _, _, domain_disagreement = self.compute_scores(sents, masks, lens)
+                domain_disagreement = domain_disagreement[(labels_score > threshhold) & (labels_idx == labels)]
+                unsuper_loss = torch.mean(torch.norm(domain_disagreement, dim=1, p=2))
+
+            return domain_cls_loss, unsuper_loss
 
             # elif domain_adapt_mode == 'unsupervised':
             #
