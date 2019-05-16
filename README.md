@@ -54,6 +54,8 @@ Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sen
 
 2. Learning Latent Opinions for Aspect-level Sentiment Classification [[Paper, AAAI2018]](http://www.statnlp.org/wp-content/uploads/papers/2018/Learning-Latent/absa.pdf) [[Code, Pytorch]](https://github.com/berlino/SA-Sent)
 
+3. Targeted Aspect-Based Sentiment Analysis via Embedding
+Commonsense Knowledge into an Attentive LSTM [[Paper, AAAI2018]](https://www.aaai.org/ocs/index.php/AAAI/AAAI18/paper/view/16541/16152)
 
 ## others
 1. An Attentive Survey of Attention Models [[Paper, IJCAI2019]](https://arxiv.org/abs/1904.02874)
