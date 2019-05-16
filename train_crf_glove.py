@@ -41,7 +41,9 @@ parser.add_argument('--config',
 parser.add_argument('--pwd', default='', type=str)
 parser.add_argument('--e', '--evaluate', action='store_true')
 parser.add_argument('--da-multitask-embed-sentagree', action='store_true')
-parser.add_argument('--sentagree_thresh', default=0.5, type=float)
+parser.add_argument('--sentagree_thresh', default=0.1, type=float)
+parser.add_argument('--unsuper_loss', default=0, type=float)
+
 parser.add_argument('--gpu', default=1, type=int)
 
 args = parser.parse_args()
@@ -134,7 +136,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
             sent_cls_loss, norm_pen = model(sent_vecs, mask_vecs, label_list, sent_lens, mode='sent_cls')
             cls_loss_value.update(sent_cls_loss.item())
 
-            total_loss = sent_cls_loss + norm_pen + 1.0 * unsuper_loss
+            total_loss = sent_cls_loss + norm_pen + args.unsuper_loss * unsuper_loss
             model.zero_grad()
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
@@ -181,7 +183,7 @@ def train(model, dg_train, dg_valid, dg_test, optimizer, args, tb_logger, dg_da_
         parameters = filter(lambda p: p.requires_grad, model.parameters())
         optimizer = create_opt(parameters, args)
 
-        for e1_ in range(args.epoch)[:10]:
+        for e1_ in range(args.epoch)[:1]:
             # if e_ % 20 < 15:
 
             if e1_ % args.adjust_every == 0:
@@ -404,8 +406,8 @@ if __name__ == "__main__":
             for test in test_fi:
                 test_key = test.split('/')[-1].split('_')[1]
                 # if valid != test and train_key != test_key and train_key != valid_key and valid_key != train_key:
-                # if valid_key == test_key and train_key != valid_key:
-                if valid_key == test_key:
+                if valid_key == test_key and train_key != valid_key:
+                # if valid_key == test_key:
                     exp += 1
                     main(train_path=traf, valid_path=valid, test_path=test, exp=exp)
 

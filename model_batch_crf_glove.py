@@ -121,7 +121,7 @@ class AspectSent(nn.Module):
         target_emb_avg = torch.sum(target_emb, 1) / torch.sum(masks, 1)  # Batch_size*embedding
         return target_emb_avg
 
-    def compute_scores(self, sents, masks, lens, is_training=True):
+    def compute_scores(self, sents, masks, lens, mode, labels, is_training=True):
         """
 
         :param sents:batch_size*max_len*word_dim
@@ -136,7 +136,7 @@ class AspectSent(nn.Module):
 
         #         context = F.relu(self.conv(context.transpose(1, 2)))
         #         context = context.transpose(1, 2)
-        context = torch.tanh(context)
+        # context = torch.tanh(context)
 
         att1_weight = F.softmax(self.attn1(context), dim=1)
         domain_specific_context = att1_weight.expand(-1, -1,
@@ -147,19 +147,44 @@ class AspectSent(nn.Module):
         batch_size, max_len, hidden_dim = context.size()
 
         # Expand dimension for concatenation
-        target_emb_avg = self.get_target_emb(context, masks)
+        target_emb_avg = self.get_target_emb(torch.tanh(context), masks)
         target_emb_avg_exp = target_emb_avg.expand(max_len, batch_size, hidden_dim)
         target_emb_avg_exp = target_emb_avg_exp.transpose(0, 1)  # Batch_size*max_len*embedding
 
-        best_latent_seqs, label_scores, select_polarities = self._compute_crf_scores(batch_size, context, lens,
+        best_latent_seqs, label_scores, select_polarities = self._compute_crf_scores(batch_size, torch.tanh(context),
+                                                                                     lens,
                                                                                      max_len, target_emb_avg_exp)
 
-        _, domain_share_label_scores, _ = self._compute_crf_scores(batch_size, domain_share_context, lens,
-                                                                   max_len, target_emb_avg_exp)
-        _, domain_specific_label_scores, _ = self._compute_crf_scores(batch_size, domain_specific_context, lens,
-                                                                      max_len, target_emb_avg_exp)
+        best_latent_seqs_share, domain_share_label_scores, _ = self._compute_crf_scores(batch_size, torch.tanh(
+            domain_share_context), lens,
+                                                                                        max_len, target_emb_avg_exp)
+        best_latent_seqs_specific, domain_specific_label_scores, _ = self._compute_crf_scores(batch_size, torch.tanh(
+            domain_specific_context), lens,
+                                                                                              max_len,
+                                                                                              target_emb_avg_exp)
 
         domain_disagreement = domain_share_label_scores - domain_specific_label_scores
+
+        if labels is not None and mode == 'da':
+            test_seqs = [(best_latent_seqs[idx], best_latent_seqs_share[idx], best_latent_seqs_specific[idx]) for idx, i
+                         in enumerate(labels == 2) if i == 1]
+
+            print('test,{},best_latent_seq:full,share,specific\n{}\n{}\n{}'.format(mode, test_seqs[0][0],
+                                                                                   test_seqs[0][1],
+                                                                                   test_seqs[0][2]))
+
+            train_seqs = [(best_latent_seqs[idx], best_latent_seqs_share[idx], best_latent_seqs_specific[idx]) for
+                          idx, i
+                          in enumerate(labels == 0) if i == 1]
+
+            print('train,{},best_latent_seq:full,share,specific\n{}\n{}\n{}'.format(mode, train_seqs[0][0],
+                                                                                    train_seqs[0][1],
+                                                                                    train_seqs[0][2]))
+        elif mode == 'sent_cls':
+            print('train,{},best_latent_seq:full,share,specific\n{}\n{}\n{}'.format(mode, best_latent_seqs[0],
+                                                                                              best_latent_seqs_share[0],
+                                                                                              best_latent_seqs_specific[
+                                                                                                  0]))
 
         if is_training:
             return label_scores, select_polarities, domain_disagreement
@@ -208,7 +233,7 @@ class AspectSent(nn.Module):
         sents = self.cat_layer(sents, masks)
         # mode = 'da'
         if mode == 'sent_cls':
-            scores, s_prob, domain_disagreement = self.compute_scores(sents, masks, lens)
+            scores, s_prob, domain_disagreement = self.compute_scores(sents, masks, lens, labels=None, mode=mode)
             s_prob_norm = torch.stack([s.norm(1) for s in s_prob]).mean()
 
             pena = F.relu(self.inter_crf.transitions[1, 0] - self.inter_crf.transitions[0, 0]) + \
@@ -228,11 +253,11 @@ class AspectSent(nn.Module):
             # if self.config.if_reset:  self.cat_layer.reset_binary()
             # sents = self.cat_layer(sents, masks)
             context = self.bilstm(sents, lens)  # batch X sentence_len X hidden_dim
-            context = torch.tanh(context)
+            # context = torch.tanh(context)
             att1_weight = F.softmax(self.attn1(context), dim=1)
             domain_specific_context = torch.mean(att1_weight.expand(-1, -1, self.config.l_hidden_size) * context,
                                                  dim=1)  # batch X hidden_dim
-
+            domain_specific_context = torch.tanh(domain_specific_context)
             domain_cls_score = self.domaincls(domain_specific_context)
 
             # if domain_adapt_mode == 'cls':
@@ -265,7 +290,7 @@ class AspectSent(nn.Module):
             # domain_share_view = domain_share_context[(labels_score > threshhold) & (labels_idx == labels)]
             unsuper_loss = torch.zeros(1).cuda(device=self.config.gpu)
             if torch.sum((labels_score > threshhold) & (labels_idx == labels)) > 0:
-                _, _, domain_disagreement = self.compute_scores(sents, masks, lens)
+                _, _, domain_disagreement = self.compute_scores(sents, masks, lens, mode=mode, labels=labels)
                 domain_disagreement = domain_disagreement[(labels_score > threshhold) & (labels_idx == labels)]
                 unsuper_loss = torch.mean(torch.norm(domain_disagreement, dim=1, p=2))
 
@@ -334,7 +359,7 @@ class AspectSent(nn.Module):
     def predict(self, sents, masks, sent_lens):
         if self.config.if_reset:  self.cat_layer.reset_binary()
         sents = self.cat_layer(sents, masks)
-        scores, best_seqs = self.compute_scores(sents, masks, sent_lens, False)
+        scores, best_seqs = self.compute_scores(sents, masks, sent_lens, mode='da', labels=None, is_training=False)
         _, pred_label = scores.max(1)
 
         # Modified by Richard Sun
