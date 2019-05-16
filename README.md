@@ -57,6 +57,9 @@ Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sen
 3. Targeted Aspect-Based Sentiment Analysis via Embedding
 Commonsense Knowledge into an Attentive LSTM [[Paper, AAAI2018]](https://www.aaai.org/ocs/index.php/AAAI/AAAI18/paper/view/16541/16152)
 
+4. Utilizing BERT for Aspect-Based Sentiment Analysis
+via Constructing Auxiliary Sentence [[Paper, AAAI]](https://arxiv.org/pdf/1903.09588.pdf) [[Code, Pytorch]](https://github.com/HSLCY/ABSA-BERT-pair)
+
 ## others
 1. An Attentive Survey of Attention Models [[Paper, IJCAI2019]](https://arxiv.org/abs/1904.02874)
 
