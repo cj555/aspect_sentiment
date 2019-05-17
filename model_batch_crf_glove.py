@@ -52,19 +52,35 @@ class biLSTM(nn.Module):
         return unpacked
 
 
+# class GradReverse(Function):
+#
+#     def __init__(self, lambd):
+#         self.lambd = lambd
+#
+#     @staticmethod
+#     def forward(ctx, x):
+#         return x.view_as(x)
+#
+#     def set_lambda(self, lambd):
+#         self.lambd = lambd
+#
+#     @staticmethod
+#     def backward(ctx, grad_output):
+#         # return grad_output.neg()
+#         return (grad_output * -self.lambd)
+
 class GradReverse(Function):
-    @staticmethod
-    def forward(ctx, x):
+    def __init__(self, lambd):
+        self.lambd = lambd
+
+    def forward(self, x):
         return x.view_as(x)
 
-    @staticmethod
-    def backward(ctx, grad_output):
-        return grad_output.neg()
+    def backward(self, grad_output):
+        return (grad_output * -self.lambd)
 
-
-def grad_reverse(x):
-    return GradReverse.apply(x)
-
+def grad_reverse(x, lambd):
+    return GradReverse(lambd)(x)
 
 # consits of three components
 class AspectSent(nn.Module):
@@ -86,9 +102,8 @@ class AspectSent(nn.Module):
         self.feat2tri = nn.Linear(kernel_num, 2 + 2)
         self.inter_crf = LinearChainCrf(2 + 2)
 
-        self.feat2label = nn.Linear(kernel_num, 3)
-        if mode == 'domain_cls':
-            self.feat2label = nn.Linear(kernel_num, 2)
+        self.feat2sent = nn.Linear(kernel_num, 3)
+        self.feat2domain = nn.Linear(kernel_num, 2)
         # self.domaincls = nn.Linear(config.l_hidden_size, 3)  # train,dev,test
         # self.is_valid = nn.Linear(config.l_hidden_size, 2)  # train,dev,test
         # self.is_test = nn.Linear(config.l_hidden_size, 2)
@@ -171,7 +186,8 @@ class AspectSent(nn.Module):
 
         best_latent_seqs, label_scores, select_polarities = self._compute_crf_scores(batch_size, torch.tanh(context),
                                                                                      lens,
-                                                                                     max_len, target_emb_avg_exp)
+                                                                                     max_len, target_emb_avg_exp,
+                                                                                     mode=mode)
 
         # print('{},best_latent_seq\n{}'.format(mode, best_latent_seqs[:3]))
 
@@ -211,7 +227,7 @@ class AspectSent(nn.Module):
         else:
             return label_scores, best_latent_seqs
 
-    def _compute_crf_scores(self, batch_size, context, lens, max_len, target_emb_avg_exp):
+    def _compute_crf_scores(self, batch_size, context, lens, max_len, target_emb_avg_exp, mode='sent_cls'):
         ###Addition model
         u = target_emb_avg_exp
         context = context + u  # Batch_size*max_len*embedding
@@ -233,12 +249,14 @@ class AspectSent(nn.Module):
         # label_scores = [self.feat2label(sent_v).squeeze(0) for sent_v in sent_vs]
         # label_scores = torch.stack(label_scores)
         sent_vs = self.dropout(sent_vs)
-        label_scores = self.feat2label(sent_vs)
-        label_scores = grad_reverse(label_scores)
+
+        label_scores = self.feat2sent(sent_vs) if mode == 'sent_cls' else self.feat2domain(sent_vs)
+
         best_latent_seqs = self.inter_crf.decode(feats, word_mask.type_as(feats))
+        # print(best_latent_seqs[0])
         return best_latent_seqs, label_scores, select_polarities
 
-    def forward(self, sents, masks, labels, lens, mode='sent_cls'):
+    def forward(self, sents, masks, labels, lens, mode='sent_cls',lambd = 1.0):
         """
         inputs are list of list for the convenince of top CRF
         :param sents: a list of sentences， batch_size*len*emb_dim
@@ -268,12 +286,13 @@ class AspectSent(nn.Module):
 
             # print('Transition Penalty:', pena)
             # print('Marginal Penalty:', s_prob_norm)
-
+            if mode == 'domain_cls':
+                scores = grad_reverse(scores,lambd)
             scores = F.log_softmax(scores, 1)  # Batch_size*label_size
 
-            sent_cls_loss = self.loss(scores, labels)
+            cls_loss = self.loss(scores, labels)
 
-            return sent_cls_loss, norm_pen
+            return cls_loss, norm_pen
 
         # elif mode == 'domain_cls':
         #     # if self.config.if_reset:  self.cat_layer.reset_binary()
