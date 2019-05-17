@@ -155,7 +155,7 @@ def save_checkpoint(save_model, i_iter, args, is_best=True):
     #     suffix = '{}_iter'.format(0)
     dict_model = save_model.state_dict()
     #     print(args.snapshot_dir + suffix)
-    filename = args.snapshot_dir
+    filename = '{}/{}'.format(args.snapshot_dir, args.exp_name)
     save_best_checkpoint(dict_model, is_best, i_iter, filename)
 
 
@@ -369,7 +369,7 @@ def main(train_path, valid_path, test_path, exp=0):
     #     logger.info("{:16} {}".format(key, val))
 
     cudnn.enabled = True
-    args.snapshot_dir = osp.join(args.snapshot_dir, args.exp_name)
+    # args.snapshot_dir = osp.join(args.snapshot_dir, args.exp_name)
 
     # global tb_logger
     # tb_logger = SummaryWriter("logs/" + args.exp_name)
@@ -381,10 +381,10 @@ def main(train_path, valid_path, test_path, exp=0):
     args.train_path = train_path
     args.valid_path = valid_path
     args.test_path = test_path
-    train_data = dr.load_data(args.train_path)
+    train_data = dr.load_data(args.train_path)[:100]
 
     if valid_path == test_path:
-        tmp_data = dr.load_data(args.test_path)
+        tmp_data = dr.load_data(args.test_path)[:100]
         valid_num = int(len(tmp_data) * 0.1)
         valid_data = copy.deepcopy(tmp_data[:valid_num])
         test_data = copy.deepcopy(tmp_data[valid_num:])

@@ -56,7 +56,7 @@ class AverageMeter(object):
 
 
 def save_checkpoint(state, is_best, e_=1, filename=''):
-    torch.save(state, osp.join(filename, 'checkpoint.pth.tar' + str(e_)))
+    torch.save(state, '{}_{}.pth.tar'.format(filename,e_))
 
 
 #     if is_best:
