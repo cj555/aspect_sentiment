@@ -22,49 +22,105 @@ from torch import optim
 from sklearn.metrics import confusion_matrix, f1_score, recall_score, precision_score
 from model_batch_crf_glove import AspectSent
 import glob
+import datetime
 
 # Get model names in the folder
 # model_names = sorted(name for name in models.__dict__
 #                      if name.islower() and not name.startswith("__") and callable(models.__dict__[name]))
 
 # Set default parameters of training
-path_tweet = 'cfgs/tweets/config_crf_glove_tweets.yaml'
-path_laptop = 'cfgs/laptop/config_crf_cnn_glove_laptop.yaml'
-path_res = 'cfgs/config_crf_glove_res.yaml'
-path_indo = 'cfgs/indo/config_crf_glove_indo_preprocessed.yaml'
-path_eng = 'eng_test.yaml'
+# path_tweet = 'cfgs/tweets/config_crf_glove_tweets.yaml'
+# path_laptop = 'cfgs/laptop/config_crf_cnn_glove_laptop.yaml'
+# path_res = 'cfgs/config_crf_glove_res.yaml'
+# path_indo = 'cfgs/indo/config_crf_glove_indo_preprocessed.yaml'
+# path_eng = 'eng_test.yaml'
+#
+# files = [path_eng]
+# parser.add_argument('--config',
+#                     default=path_indo)  # 'config_crf_rnn_glove_res.yaml')
 
-files = [path_eng]
 parser = argparse.ArgumentParser(description='TSA')
-parser.add_argument('--config',
-                    default=path_indo)  # 'config_crf_rnn_glove_res.yaml')
 parser.add_argument('--pwd', default='', type=str)
 parser.add_argument('--e', '--evaluate', action='store_true')
-parser.add_argument('--da-multitask-double', action='store_true')
+parser.add_argument('--da-grl', action='store_true')
 parser.add_argument('--domain_cls_loss_upper_bound', default=0.8, type=float)
+parser.add_argument('--reverse_da_loss', action='store_true')
+parser.add_argument('--date', default='{:%Y%m%d}'.format(datetime.datetime.now()), type=str)
+parser.add_argument('--exp_name', default=0, type=int)
+
+parser.add_argument('--arch', default='CRFAspectSent', type=str)
+
+parser.add_argument('--batch_size', default=32, type=int)
+parser.add_argument('--embed_num', default=5120, type=int)  # Map words to lower case
+parser.add_argument('--embed_dim', default=300, type=int)  # elmo the emb_size is 1024
+parser.add_argument('--mask_dim', default=50, type=int)
+parser.add_argument('--if_update_embed', action='store_true')
+parser.set_defaults(if_update_embed=True)
+parser.add_argument('--l_hidden_size', default=256, type=int)
+parser.add_argument('--l_num_layers', default=2, type=int)
+parser.add_argument('--l_dropout', default=0.3, type=float)
+parser.add_argument('--dropout', default=0.3, type=float)
+parser.add_argument('--clip_norm', default=3, type=float)
+
+parser.add_argument('--C1', default=0.01, type=float)  # CRF penalty
+parser.add_argument('--C2', default=0.001, type=float)  # CRF penalty
+parser.add_argument('--opt', default='Adam', type=str)
+parser.add_argument('--epoch', default=30, type=int)
+parser.add_argument('--lr', default=0.0001, type=float)  # learning rate
+parser.add_argument('--l2', default=0.001, type=float)  # learning rate decay
 parser.add_argument('--gpu', default=1, type=int)
+parser.add_argument('--snapshot_dir', default='checkpoints', type=str)
+parser.add_argument('--is_stanford_nlp', action='store_true')
+parser.add_argument('--dic_path', default='eng_glove_preprocessed/eng_dict.pkl', type=str)
+parser.add_argument('--pretrained_embed_path', default='../data_aspect_sentiment/glove.840B.300d.txt', type=str)
+parser.add_argument('--data_path', default='eng_glove_preprocessed', type=str)
+
+parser.add_argument('--elmo_config_file',
+                    default='/home/richard/richardsun/github/data/Elmo/elmo_2x4096_512_2048cnn_2xhighway_options.json',
+                    type=str)
+
+parser.add_argument('--elmo_weight_file',
+                    default='/home/richard/richardsun/github/data/Elmo/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5',
+                    type=str)
+parser.add_argument('--embed_path', default='eng_glove_preprocessed/eng_local_emb.pkl', type=str)
+parser.add_argument('--training', action='store_true')
+
+parser.set_defaults(training=True)
+parser.add_argument('--if_gpu', action='store_true')
+parser.set_defaults(if_gpu=True)
+parser.add_argument('--if_reset', action='store_true')
+parser.set_defaults(if_reset=True)
+parser.add_argument('--print_freq', default=10, type=int)
 
 args = parser.parse_args()
+args.exp_name = '{}_{}'.format(args.date, args.exp_name)
 torch.cuda.set_device(args.gpu)
 
 
 # tool functions
 def adjust_learning_rate(optimizer, epoch, args):
-    '''
-    Descend learning rate
-
-    '''
+    """
+     Descend learning rate
+    :param optimizer:
+    :param epoch:
+    :param args:
+    :return:
+    """
 
     lr = args.lr / (2 ** (epoch // args.adjust_every))
-    print("Adjust lr to ", lr)
+    logger.info("Adjust lr to {}".format(lr))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
 
 def create_opt(parameters, config):
-    '''
-    Create optimizer
-    '''
+    """
+
+    :param parameters:
+    :param config:
+    :return:
+    """
+
     if config.opt == "SGD":
         optimizer = optim.SGD(parameters, lr=config.lr, weight_decay=config.l2)
     elif config.opt == "Adam":
@@ -77,17 +133,25 @@ def create_opt(parameters, config):
 
 
 def mkdirs(dir):
-    '''
-    Create folder
-    '''
+    """
+
+    :param dir:
+    :return:
+    """
     if not os.path.exists(dir):
         os.mkdir(dir)
 
 
 def save_checkpoint(save_model, i_iter, args, is_best=True):
-    '''
+    """
     Save the model to local disk
-    '''
+    :param save_model:
+    :param i_iter:
+    :param args:
+    :param is_best:
+    :return:
+    """
+
     #     suffix = '{}_iter'.format(0)
     dict_model = save_model.state_dict()
     #     print(args.snapshot_dir + suffix)
@@ -138,12 +202,12 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
 
     for e_ in range(args.epoch):
 
-        if e_ % args.adjust_every == 0:
-            adjust_learning_rate(optimizer, e_, args)
+        # if e_ % args.adjust_every == 0:
+        #     adjust_learning_rate(optimizer, e_, args)
 
         p = float(e_) / args.epoch
         lr = max(0.005 / (1. + 10 * p) ** 0.75, 0.002)
-        print("Adjust lr to ", lr)
+        logger.info("Adjust lr to {}".format(lr))
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
@@ -180,8 +244,7 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
                 test_label_list, test_sent_lens = test_label_list.cuda(device=args.gpu), test_sent_lens.cuda(
                     device=args.gpu)
 
-            # ref: https://discuss.pytorch.org/t/solved-reverse-gradients-in-backward-pass/3589/10
-
+            ## ref: https://discuss.pytorch.org/t/solved-reverse-gradients-in-backward-pass/3589/10
             domain_cls_loss1, domain_norm_pen1 = model(sent_vecs, mask_vecs, label_list, sent_lens, mode='domain_cls',
                                                        lambd=lambd)
 
@@ -192,6 +255,10 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
             domain_total_loss = (domain_cls_loss1 + domain_norm_pen1 + domain_cls_loss2 + domain_norm_pen2) / 2
             domain_total_loss = domain_total_loss if args.domain_cls_loss_upper_bound - domain_total_loss > 0 else torch.zeros(
                 1).cuda()
+
+            if args.reverse_da_loss and domain_total_loss > 0:
+                domain_total_loss = args.domain_cls_loss_upper_bound - domain_total_loss
+
             if domain_total_loss > 0:
                 model.zero_grad()
                 domain_total_loss.backward()
@@ -199,7 +266,7 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
                 optimizer.step()
 
             if idx % args.print_freq == 0:
-                print(
+                logger.info(
                     "exp:{}, e_:{}, "
                     "sent cls loss {:.3f}, "
                     "domain cls loss {:.3f},"
@@ -234,7 +301,7 @@ def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
     correct_count = 0
     true_labels = []
     pred_labels = []
-    print("transitions matrix ", model.inter_crf.transitions.data)
+    logger.info("transitions matrix {}".format(model.inter_crf.transitions.data))
     num_seq = 0
     while dr_test.index < dr_test.data_len:
         sent, mask, label, sent_len, texts, targets, _ = next(dr_test.get_ids_samples())
@@ -273,7 +340,6 @@ def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
                                                    precision_score(true_labels, pred_labels, average='macro'),
                                                    recall_score(true_labels, pred_labels, average='macro'),
                                                    num_seq / dr_test.data_len))
-
     #     print('Confusion Matrix')
     #     print(confusion_matrix(true_labels, pred_labels))
     #     print('f1_score:', f1_score(true_labels, pred_labels, average='macro'))
@@ -284,95 +350,102 @@ def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
 def main(train_path, valid_path, test_path, exp=0):
     """ Create the model and start the training."""
 
-    for file in files:
-        load_config(file)
-        global logger
-        logger = create_logger('global_logger', 'logs/' + args.exp_name + '/log.txt')
-        logger.info('{}'.format(args))
-        # logger.info(
-        #     '============Exp:{3}\ntraining:{0}\nvalid:{1}\ntest:{2}'.format(train_path, valid_path, test_path, exp))
-        logger.info(
-            '============\nExp:{3}, training: {0},valid: {1}, test: {2}'.format(train_path.split('/')[-1],
-                                                                                valid_path.split('/')[-1],
-                                                                                test_path.split('/')[-1], exp))
+    # for file in files:
+    #     load_config(file)
+    global logger
+    logger = create_logger('global_logger', 'logs/' + args.exp_name + '/log.txt')
+    logger.info('{}'.format(args))
+    # logger.info(
+    #     '============Exp:{3}\ntraining:{0}\nvalid:{1}\ntest:{2}'.format(train_path, valid_path, test_path, exp))
+    logger.info(
+        '============\n'
+        'Exp:{3}, training: {0},'
+        '\nvalid: {1}, '
+        '\ntest: {2}'.format(train_path.split('/')[-1],
+                             valid_path.split('/')[-1],
+                             test_path.split('/')[-1], exp))
 
-        # for key, val in vars(args).items():
-        #     logger.info("{:16} {}".format(key, val))
+    # for key, val in vars(args).items():
+    #     logger.info("{:16} {}".format(key, val))
 
-        cudnn.enabled = True
-        args.snapshot_dir = osp.join(args.snapshot_dir, args.exp_name)
+    cudnn.enabled = True
+    args.snapshot_dir = osp.join(args.snapshot_dir, args.exp_name)
 
-        global tb_logger
-        tb_logger = SummaryWriter("logs/" + args.exp_name)
-        global best_acc
-        best_acc = 0
+    # global tb_logger
+    # tb_logger = SummaryWriter("logs/" + args.exp_name)
+    global best_acc
+    best_acc = 0
 
-        ##Load datasets
-        dr = data_reader(args)
-        args.train_path = train_path
-        args.valid_path = valid_path
-        args.test_path = test_path
-        train_data = dr.load_data(args.train_path)[:64]
+    ##Load datasets
+    dr = data_reader(args)
+    args.train_path = train_path
+    args.valid_path = valid_path
+    args.test_path = test_path
+    train_data = dr.load_data(args.train_path)
 
-        if valid_path == test_path:
-            tmp_data = dr.load_data(args.test_path)[:64]
-            valid_num = int(len(tmp_data) * 0.1)
-            valid_data = copy.deepcopy(tmp_data[:valid_num])
-            test_data = copy.deepcopy(tmp_data[valid_num:])
+    if valid_path == test_path:
+        tmp_data = dr.load_data(args.test_path)
+        valid_num = int(len(tmp_data) * 0.1)
+        valid_data = copy.deepcopy(tmp_data[:valid_num])
+        test_data = copy.deepcopy(tmp_data[valid_num:])
 
-        else:
-            valid_data = dr.load_data(args.valid_path)
-            test_data = dr.load_data(args.test_path)
+    else:
+        valid_data = dr.load_data(args.valid_path)
+        test_data = dr.load_data(args.test_path)
 
-        da_train_data = copy.deepcopy(valid_data) + copy.deepcopy(test_data)
-        # for idx, datum in enumerate(da_train_data):
-        #     if idx < len(train_data):
-        #         datum[2] = 0
-        #     # elif idx >= len(train_data) and idx < len(valid_data) + len(train_data):
-        #     #     datum[2] = 1
-        #     else:
-        #         datum[2] = 1
+    da_train_data = copy.deepcopy(valid_data) + copy.deepcopy(test_data)
+    # for idx, datum in enumerate(da_train_data):
+    #     if idx < len(train_data):
+    #         datum[2] = 0
+    #     # elif idx >= len(train_data) and idx < len(valid_data) + len(train_data):
+    #     #     datum[2] = 1
+    #     else:
+    #         datum[2] = 1
 
-        # train_data = dr.load_data(train_path)
-        # valid_data = dr.load_data(valid_path)
-        # test_data = dr.load_data(test_path)
+    # train_data = dr.load_data(train_path)
+    # valid_data = dr.load_data(valid_path)
+    # test_data = dr.load_data(test_path)
 
-        logger.info("Training Samples: {}".format(len(train_data)))
-        logger.info("Validating Samples: {}".format(len(valid_data)))
-        logger.info("Testing Samples: {}".format(len(test_data)))
+    logger.info("Training Samples: {},"
+                "Validating Samples: {},"
+                "Testing Samples: {}".format(len(train_data), len(valid_data), len(test_data)))
 
-        dg_train_sent_cls = data_generator(args, train_data)
-        dg_train_domain_cls = data_generator(args, da_train_data)
-        dg_valid_sent_cls = data_generator(args, valid_data, False)
-        dg_test_sent_cls = data_generator(args, test_data, False)
-        dg_train_sent_cls_eval = data_generator(args, copy.deepcopy(train_data), False)
-        # dg_train_domain_cls_eval = data_generator(args, copy.deepcopy(da_train_data), False)
+    dg_train_sent_cls = data_generator(args, train_data)
+    dg_train_domain_cls = data_generator(args, da_train_data)
+    dg_valid_sent_cls = data_generator(args, valid_data, False)
+    dg_test_sent_cls = data_generator(args, test_data, False)
+    dg_train_sent_cls_eval = data_generator(args, copy.deepcopy(train_data), False)
+    # dg_train_domain_cls_eval = data_generator(args, copy.deepcopy(da_train_data), False)
 
-        # model = models.__dict__[args.arch](args)
+    # model = models.__dict__[args.arch](args)
 
-        # path = None  # 'checkpoints/config_crf_glove_tweets_20181206_3/checkpoint.pth.tar9'
-        # if path:
-        #     model.load_state_dict(torch.load(path))
-        # if args.if_gpu:
-        #     model = model.cuda(device=args.gpu)
-        # parameters = filter(lambda p: p.requires_grad, model.parameters())
-        # optimizer = create_opt(parameters, args)
+    # path = None  # 'checkpoints/config_crf_glove_tweets_20181206_3/checkpoint.pth.tar9'
+    # if path:
+    #     model.load_state_dict(torch.load(path))
+    # if args.if_gpu:
+    #     model = model.cuda(device=args.gpu)
+    # parameters = filter(lambda p: p.requires_grad, model.parameters())
+    # optimizer = create_opt(parameters, args)
 
-        if args.training:
-            model = AspectSent(args, mode='domain_cls')
-            if args.if_gpu:
-                model = model.cuda(device=args.gpu)
+    if args.training:
+        model = AspectSent(args, mode='domain_cls')
+        if args.if_gpu:
+            model = model.cuda(device=args.gpu)
 
-            # train(model, dg_train_sent_cls, dg_valid_sent_cls, dg_test_sent_cls, args, exp, dg_train_sent_cls_eval,mode='sent_cls')
-            train(model, dg_train_sent_cls, dg_train_domain_cls, dg_valid_sent_cls, dg_test_sent_cls, args, exp,
-                  dg_train_sent_cls_eval)
+        # train(model, dg_train_sent_cls, dg_valid_sent_cls, dg_test_sent_cls, args, exp, dg_train_sent_cls_eval,mode='sent_cls')
+        train(model, dg_train_sent_cls, dg_train_domain_cls, dg_valid_sent_cls, dg_test_sent_cls, args, exp,
+              dg_train_sent_cls_eval)
 
-        # else:
-        #     print('NOT arg.training')
-        #     PATH = "checkpoints/config_crf_glove_tweets_20190212/checkpoint.pth.tar21"
-        #     model.load_state_dict(torch.load(PATH))
-        #     evaluate_test(dg_test_sent_cls, model, args, sample_out=False, mode='test')
-        logger.info('============Exp Done:{3}\ntraining:{0}\nvalid:{1}\ntest:{2}'.format(traf, valid, test, exp))
+    # else:
+    #     print('NOT arg.training')
+    #     PATH = "checkpoints/config_crf_glove_tweets_20190212/checkpoint.pth.tar21"
+    #     model.load_state_dict(torch.load(PATH))
+    #     evaluate_test(dg_test_sent_cls, model, args, sample_out=False, mode='test')
+    logger.info(
+        '============\nExp Done:{3}\n'
+        'training:{0}\n'
+        'valid:{1}\n'
+        'test:{2}\n============'.format(traf, valid, test, exp))
 
 
 def load_config(file):
@@ -397,8 +470,8 @@ if __name__ == "__main__":
             for test in test_fi:
                 test_key = test.split('/')[-1].split('_')[1]
                 # if valid != test and train_key != test_key and train_key != valid_key and valid_key != train_key:
-                if valid_key == test_key and train_key != valid_key:
-                    # if valid_key == test_key:
+                # if valid_key == test_key and train_key != valid_key:
+                if valid_key == test_key:
                     exp += 1
                     main(train_path=traf, valid_path=valid, test_path=test, exp=exp)
 

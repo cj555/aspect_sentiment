@@ -79,8 +79,10 @@ class GradReverse(Function):
     def backward(self, grad_output):
         return (grad_output * -self.lambd)
 
+
 def grad_reverse(x, lambd):
     return GradReverse(lambd)(x)
+
 
 # consits of three components
 class AspectSent(nn.Module):
@@ -112,7 +114,7 @@ class AspectSent(nn.Module):
         self.loss = nn.NLLLoss()
 
         self.tanh = nn.Tanh()
-        self.dropout = nn.Dropout(config.dropout2)
+        self.dropout = nn.Dropout(config.dropout)
         # Modified by Richard Sun
         self.cat_layer = SimpleCat(config)
         self.cat_layer.load_vector()
@@ -256,7 +258,7 @@ class AspectSent(nn.Module):
         # print(best_latent_seqs[0])
         return best_latent_seqs, label_scores, select_polarities
 
-    def forward(self, sents, masks, labels, lens, mode='sent_cls',lambd = 1.0):
+    def forward(self, sents, masks, labels, lens, mode='sent_cls', lambd=1.0):
         """
         inputs are list of list for the convenince of top CRF
         :param sents: a list of sentences， batch_size*len*emb_dim
@@ -287,7 +289,7 @@ class AspectSent(nn.Module):
             # print('Transition Penalty:', pena)
             # print('Marginal Penalty:', s_prob_norm)
             if mode == 'domain_cls':
-                scores = grad_reverse(scores,lambd)
+                scores = grad_reverse(scores, lambd)
             scores = F.log_softmax(scores, 1)  # Batch_size*label_size
 
             cls_loss = self.loss(scores, labels)

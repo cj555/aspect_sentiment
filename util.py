@@ -15,6 +15,7 @@ def to_scalar(var):
     # returns a python float
     return var.view(-1).data.tolist()[0]
 
+
 def argmax(vec):
     # vec is only 1d vec
     # return the argmax as a python int
@@ -54,13 +55,19 @@ class AverageMeter(object):
             self.avg = self.sum / self.count
 
 
-def save_checkpoint(state, is_best, e_=1, filename = ''):
-    torch.save(state, osp.join(filename, 'checkpoint.pth.tar'+str(e_)))
+def save_checkpoint(state, is_best, e_=1, filename=''):
+    torch.save(state, osp.join(filename, 'checkpoint.pth.tar' + str(e_)))
+
+
 #     if is_best:
 #         shutil.copyfile(osp.join(filename, 'checkpoint.pth.tar'), osp.join(filename,  'model_best.pth.tar'))
 
 
 def create_logger(name, log_file, level=logging.INFO):
+    import os.path
+    if not os.path.exists(log_file):
+        fd = '/'.join(log_file.split('/')[:-1])
+        os.mkdir(fd)
     print(level)
     l = logging.getLogger(name)
     formatter = logging.Formatter('[line:%(lineno)4d] %(message)s')
@@ -72,6 +79,8 @@ def create_logger(name, log_file, level=logging.INFO):
     l.addHandler(fh)
     l.addHandler(sh)
     return l
+
+
 # the input is 2d dim tensor
 # output 1d tensor
 def argmax_m(mat):
@@ -86,6 +95,7 @@ def argmax_m(mat):
     else:
         return ret_ind, torch.Tensor(ret_v)
 
+
 # Compute log sum exp in a numerically stable way for the forward algorithm
 # vec is n * n, norm in row
 def log_sum_exp_m(mat):
@@ -94,14 +104,15 @@ def log_sum_exp_m(mat):
     for i in range(row):
         vec = mat[i]
         max_score = vec[argmax(vec)]
-        max_score_broadcast = max_score.view( -1).expand(1, vec.size()[0])
-        ret_l.append( max_score + \
-        torch.log(torch.sum(torch.exp(vec - max_score_broadcast))))
+        max_score_broadcast = max_score.view(-1).expand(1, vec.size()[0])
+        ret_l.append(max_score + \
+                     torch.log(torch.sum(torch.exp(vec - max_score_broadcast))))
     return torch.stack(ret_l)
+
 
 def log_sum_exp(vec_list):
     tmp_mat = torch.stack(vec_list, 0)
-    m,n = tmp_mat.size()
+    m, n = tmp_mat.size()
     # value may be nan because of gradient explosion
     try:
         max_score = torch.max(tmp_mat)
@@ -113,14 +124,16 @@ def log_sum_exp(vec_list):
     ret_val = max_ex_v + torch.log(torch.sum(torch.exp(tmp_mat - max_expand), 0))
     return ret_val
 
+
 # vec1 and vec2 both 1d tensor
 # return 1d tensor
 def add_broad(vec1, vec2):
     s_ = vec1.size()[0]
-    vec1 = vec1.expand(3, s_).transpose(0,1)
+    vec1 = vec1.expand(3, s_).transpose(0, 1)
     vec2 = vec2.expand(s_, 3)
     new_vec = vec1 + vec2
     return new_vec.view(-1)
+
 
 # transform a list to 1d vec
 def to_1d(vec_list):
@@ -130,6 +143,7 @@ def to_1d(vec_list):
         ret_v = add_broad(ret_v, vec_list[i])
     return ret_v
 
+
 def to_ind(num, logit):
     ret_l = []
     for i in reversed(range(logit)):
@@ -137,6 +151,7 @@ def to_ind(num, logit):
         num = num - tmp * 3 ** i
         ret_l.append(tmp)
     return list(reversed(ret_l))
+
 
 def create_empty_var(if_gpu):
     if if_gpu:
