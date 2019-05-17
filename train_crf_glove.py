@@ -140,6 +140,15 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
 
         if e_ % args.adjust_every == 0:
             adjust_learning_rate(optimizer, e_, args)
+
+        p = float(e_) / args.epoch
+        lr = max(0.005 / (1. + 10 * p) ** 0.75, 0.002)
+        print("Adjust lr to ", lr)
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+
+        lambd = min(2. / (1. + np.exp(-10. * p)) - 1, 0.1)
+
         loops = int(dg_sent_train.data_len / args.batch_size)
         for idx in range(loops):
             sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(
@@ -172,8 +181,7 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
                     device=args.gpu)
 
             # ref: https://discuss.pytorch.org/t/solved-reverse-gradients-in-backward-pass/3589/10
-            p = float(e_) / args.epoch
-            lambd = min(2. / (1. + np.exp(-10. * p)) - 1, 0.1)
+
             domain_cls_loss1, domain_norm_pen1 = model(sent_vecs, mask_vecs, label_list, sent_lens, mode='domain_cls',
                                                        lambd=lambd)
 
@@ -182,7 +190,7 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
                                                        lambd=lambd)
 
             domain_total_loss = (domain_cls_loss1 + domain_norm_pen1 + domain_cls_loss2 + domain_norm_pen2) / 2
-            domain_total_loss = args.domain_cls_loss_upper_bound - domain_total_loss if args.domain_cls_loss_upper_bound - domain_total_loss > 0 else torch.zeros(
+            domain_total_loss = domain_total_loss if args.domain_cls_loss_upper_bound - domain_total_loss > 0 else torch.zeros(
                 1).cuda()
             if domain_total_loss > 0:
                 model.zero_grad()
