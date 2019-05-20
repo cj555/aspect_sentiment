@@ -43,6 +43,8 @@ Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sen
 17. Exploiting Coarse-to-Fine Task Transfer for Aspect-level Sentiment Classification [[Paper, AAAI2018]](https://arxiv.org/pdf/1811.10999.pdf)
   >> This paper Proposes to use Aspect Categories (AC) to train Aspect Term (AT) task. To do so, C2A (Catories to aspect) layer is trained to label the aspect in Aspect Categories Dataset. Finally the feature is aligned by Contrastive Feature aligment (CFA)
 
+18. Learning What and Where to Transfer [[Paper, ICML2019]](https://arxiv.org/abs/1905.05901) [[Code, Pytorch]](https://github.com/alinlab/L2T-ww)
+
 ## Survey On Graph neural network
 
 1. How Powerful are Graph Neural Networks? [[Paper, ICLR2019]](https://openreview.net/pdf?id=ryGs6iA5Km)
