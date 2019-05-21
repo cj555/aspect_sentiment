@@ -42,7 +42,7 @@ import datetime
 parser = argparse.ArgumentParser(description='TSA')
 parser.add_argument('--pwd', default='', type=str)
 parser.add_argument('--e', '--evaluate', action='store_true')
-parser.add_argument('--da-grl', action='store_true')
+parser.add_argument('--da_grl', action='store_true')
 parser.add_argument('--domain_cls_loss_upper_bound', default=0.8, type=float)
 parser.add_argument('--reverse_da_loss', action='store_true')
 parser.add_argument('--date', default='{:%Y%m%d}'.format(datetime.datetime.now()), type=str)
@@ -231,52 +231,64 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
             optimizer.step()
 
-            # da
-            test_sent_vecs, test_mask_vecs, test_label_list, test_sent_lens, _, _, _ = next(
-                dg_domain_train.get_ids_samples())
+            if args.da_grl:
+                test_sent_vecs, test_mask_vecs, test_label_list, test_sent_lens, _, _, _ = next(
+                    dg_domain_train.get_ids_samples())
 
-            test_label_list = torch.ones(test_label_list.shape).type('torch.LongTensor').cuda()
-            label_list = torch.zeros(test_label_list.shape).type('torch.LongTensor').cuda()
+                test_label_list = torch.ones(test_label_list.shape).type('torch.LongTensor').cuda()
+                label_list = torch.zeros(test_label_list.shape).type('torch.LongTensor').cuda()
 
-            if args.if_gpu:
-                test_sent_vecs, test_mask_vecs = test_sent_vecs.cuda(device=args.gpu), test_mask_vecs.cuda(
-                    device=args.gpu)
-                test_label_list, test_sent_lens = test_label_list.cuda(device=args.gpu), test_sent_lens.cuda(
-                    device=args.gpu)
+                if args.if_gpu:
+                    test_sent_vecs, test_mask_vecs = test_sent_vecs.cuda(device=args.gpu), test_mask_vecs.cuda(
+                        device=args.gpu)
+                    test_label_list, test_sent_lens = test_label_list.cuda(device=args.gpu), test_sent_lens.cuda(
+                        device=args.gpu)
 
-            ## ref: https://discuss.pytorch.org/t/solved-reverse-gradients-in-backward-pass/3589/10
-            domain_cls_loss1, domain_norm_pen1 = model(sent_vecs, mask_vecs, label_list, sent_lens, mode='domain_cls',
-                                                       lambd=lambd)
+                ## ref: https://discuss.pytorch.org/t/solved-reverse-gradients-in-backward-pass/3589/10
+                domain_cls_loss1, domain_norm_pen1 = model(sent_vecs, mask_vecs, label_list, sent_lens,
+                                                           mode='domain_cls',
+                                                           lambd=lambd)
 
-            domain_cls_loss2, domain_norm_pen2 = model(test_sent_vecs, test_mask_vecs, test_label_list, test_sent_lens,
-                                                       mode='domain_cls',
-                                                       lambd=lambd)
+                domain_cls_loss2, domain_norm_pen2 = model(test_sent_vecs, test_mask_vecs, test_label_list,
+                                                           test_sent_lens,
+                                                           mode='domain_cls',
+                                                           lambd=lambd)
 
-            domain_total_loss = (domain_cls_loss1 + domain_norm_pen1 + domain_cls_loss2 + domain_norm_pen2) / 2
-            domain_total_loss = domain_total_loss if args.domain_cls_loss_upper_bound - domain_total_loss > 0 else torch.zeros(
-                1).cuda()
+                domain_total_loss = (domain_cls_loss1 + domain_norm_pen1 + domain_cls_loss2 + domain_norm_pen2) / 2
+                domain_total_loss = domain_total_loss if args.domain_cls_loss_upper_bound - domain_total_loss > 0 else torch.zeros(
+                    1).cuda()
 
-            if args.reverse_da_loss and domain_total_loss > 0:
-                domain_total_loss = args.domain_cls_loss_upper_bound - domain_total_loss
+                if args.reverse_da_loss and domain_total_loss > 0:
+                    domain_total_loss = args.domain_cls_loss_upper_bound - domain_total_loss
 
-            if domain_total_loss > 0:
-                model.zero_grad()
-                domain_total_loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
-                optimizer.step()
+                if domain_total_loss > 0:
+                    model.zero_grad()
+                    domain_total_loss.backward()
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
+                    optimizer.step()
 
-            if idx % args.print_freq == 0:
-                logger.info(
-                    "exp:{}, e_:{}, "
-                    "sent cls loss {:.3f}, "
-                    "domain cls loss {:.3f},"
-                    "domain lambda {:.3f}, "
-                    "with sent penalty {:.3f}".format(exp,
-                                                      e_,
-                                                      sent_cls_loss.item(),
-                                                      domain_total_loss.item(),
-                                                      lambd,
-                                                      sent_norm_pen.item()))
+                if idx % args.print_freq == 0:
+                    logger.info(
+                        "exp:{}, e_:{}, "
+                        "sent cls loss {:.3f}, "
+                        "domain cls loss {:.3f},"
+                        "domain lambda {:.3f}, "
+                        "with sent penalty {:.3f}".format(exp,
+                                                          e_,
+                                                          sent_cls_loss.item(),
+                                                          domain_total_loss.item(),
+                                                          lambd,
+                                                          sent_norm_pen.item()))
+            else:
+                if idx % args.print_freq == 0:
+                    logger.info(
+                        "exp:{}, e_:{}, "
+                        "sent cls loss {:.3f}, "
+                        "with sent penalty {:.3f}".format(exp,
+                                                          e_,
+                                                          sent_cls_loss.item(),
+
+                                                          sent_norm_pen.item()))
 
         model.eval()
         test_f1, valid_f1 = update_test_model(args, best_valid_f1, dg_sent_test, dg_sent_valid, e_, exp, model,
@@ -381,10 +393,10 @@ def main(train_path, valid_path, test_path, exp=0):
     args.train_path = train_path
     args.valid_path = valid_path
     args.test_path = test_path
-    train_data = dr.load_data(args.train_path)[:100]
+    train_data = dr.load_data(args.train_path)
 
     if valid_path == test_path:
-        tmp_data = dr.load_data(args.test_path)[:100]
+        tmp_data = dr.load_data(args.test_path)
         valid_num = int(len(tmp_data) * 0.1)
         valid_data = copy.deepcopy(tmp_data[:valid_num])
         test_data = copy.deepcopy(tmp_data[valid_num:])
