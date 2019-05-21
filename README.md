@@ -44,6 +44,8 @@ Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sen
   >> This paper Proposes to use Aspect Categories (AC) to train Aspect Term (AT) task. To do so, C2A (Catories to aspect) layer is trained to label the aspect in Aspect Categories Dataset. Finally the feature is aligned by Contrastive Feature aligment (CFA)
 
 18. Learning What and Where to Transfer [[Paper, ICML2019]](https://arxiv.org/abs/1905.05901) [[Code, Pytorch]](https://github.com/alinlab/L2T-ww)
+19. [[Paper, ACL2018]](https://www.aclweb.org/anthology/D18-1041) [[Code,Theano]](https://github.com/DeepLearnXMU/WDCNMT)
+
 
 ## Survey On Graph neural network
 
