@@ -69,7 +69,7 @@ parser.add_argument('--clip_norm', default=3, type=float)
 parser.add_argument('--C1', default=0.01, type=float)  # CRF penalty
 parser.add_argument('--C2', default=0.001, type=float)  # CRF penalty
 parser.add_argument('--opt', default='Adam', type=str)
-parser.add_argument('--epoch', default=30, type=int)
+parser.add_argument('--epoch', default=10, type=int)
 parser.add_argument('--lr', default=0.0001, type=float)  # learning rate
 parser.add_argument('--l2', default=0.001, type=float)  # learning rate decay
 parser.add_argument('--gpu', default=1, type=int)
@@ -318,6 +318,7 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
             optimizer.step()
             tot_idx += 1
 
+            writer.add_scalar('loss_{}/sent_loss'.format(exp), sent_loss, tot_idx)
             writer.add_scalar('loss_{}/train_sent_cls_loss_adc'.format(exp), train_sent_cls_loss_adc, tot_idx)
             writer.add_scalar('loss_{}/dc_loss'.format(exp), dc_loss, tot_idx)
             writer.add_scalar('loss_{}/adc_loss'.format(exp), adc_loss, tot_idx)
@@ -326,9 +327,6 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
             writer.add_scalar('loss_{}/test_sent_cls_loss_dc'.format(exp), test_sent_cls_loss_dc, tot_idx)
             writer.add_scalar('loss_{}/sent_loss_valid'.format(exp), sent_loss_valid, tot_idx)
             writer.add_scalar('loss_{}/sent_loss_test'.format(exp), sent_loss_test, tot_idx)
-
-
-
 
             # if idx % args.print_freq == 0:
             #     logger.info(
@@ -360,19 +358,19 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
         valid_acc, valid_f1 = evaluate_test(dg_sent_valid, model, args, mode='valid')
         test_acc, test_f1 = evaluate_test(dg_sent_test, model, args, mode='test')
 
-        if not early_stop_f1 and valid_f1 >= best_valid_f1:
-            best_valid_f1 = valid_f1
-            logger.info("exp {}, e_ {},"
-                        "Best Test by f1| f1_score: {:.3f},acc: {:.3f} ".format(exp, e_, test_f1, test_acc))
-        elif not early_stop_f1 and valid_f1 < best_valid_f1:
-            early_stop_f1 = True
-
-        if not early_stop_acc and valid_acc >= best_valid_acc:
-            best_valid_acc = valid_acc
-            logger.info("exp {}, e_ {},"
-                        "Best Test by acc| f1_score: {:.3f},acc: {:.3f} ".format(exp, e_, test_f1, test_acc))
-        elif not early_stop_acc and valid_acc < best_valid_acc:
-            early_stop_acc = True
+        # if not early_stop_f1 and valid_f1 >= best_valid_f1:
+        #     best_valid_f1 = valid_f1
+        #     logger.info("exp {}, e_ {},"
+        #                 "Best Test by f1| f1_score: {:.3f},acc: {:.3f} ".format(exp, e_, test_f1, test_acc))
+        # elif not early_stop_f1 and valid_f1 < best_valid_f1:
+        #     early_stop_f1 = True
+        #
+        # if not early_stop_acc and valid_acc >= best_valid_acc:
+        #     best_valid_acc = valid_acc
+        #     logger.info("exp {}, e_ {},"
+        #                 "Best Test by acc| f1_score: {:.3f},acc: {:.3f} ".format(exp, e_, test_f1, test_acc))
+        # elif not early_stop_acc and valid_acc < best_valid_acc:
+        #     early_stop_acc = True
 
         # test_f1, valid_f1 = update_test_model(args, best_valid_f1, dg_sent_test, dg_sent_valid, e_, exp, model,
         #                                       test_f1)
