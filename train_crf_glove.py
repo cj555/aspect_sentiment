@@ -300,15 +300,15 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
                 dc_loss = (domain_cls_loss1 + domain_norm_pen1 + domain_cls_loss2 + domain_norm_pen2) / 2
 
             da_loss = (train_cls_loss_dc + test_sent_cls_loss_dc) * 0.5 * lambd2
-            total_loss = sent_loss
-            # if args.da_grl_plus:
-            #     model.zero_grad()
-            #     adc_loss.backward()
-            #     optimizer.step()
+
+            if args.da_grl_plus:
+                model.zero_grad()
+                adc_loss.backward()
+                optimizer.step()
             #     total_loss = sent_loss + train_sent_cls_loss_adc + train_sent_norm_pen_adc + dc_loss + da_loss  # +adc_loss
             # else:
             #     total_loss = sent_loss
-
+            total_loss = sent_loss + dc_loss
             sent_loss_valid = monitor_loss(args, dg_valid_sent_cls1, model)
             sent_loss_test = monitor_loss(args, dg_test_sent_cls1, model)
 
