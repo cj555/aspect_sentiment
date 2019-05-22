@@ -46,6 +46,7 @@ Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sen
 18. Learning What and Where to Transfer [[Paper, ICML2019]](https://arxiv.org/abs/1905.05901) [[Code, Pytorch]](https://github.com/alinlab/L2T-ww)
 19. Multi-Domain Neural Machine Translation with Word-Level Domain Context Discrimination [[Paper, ACL2018]](https://www.aclweb.org/anthology/D18-1041) [[Code,Theano]](https://github.com/DeepLearnXMU/WDCNMT)
 
+20. Hierarchical Attention Generative Adversarial Networks for Cross-domain Sentiment Classification [[Paper, ]](https://arxiv.org/pdf/1903.11334.pdf)
 
 ## Survey On Graph neural network
 
