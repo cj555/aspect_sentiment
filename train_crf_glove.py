@@ -43,7 +43,7 @@ parser = argparse.ArgumentParser(description='TSA')
 parser.add_argument('--pwd', default='', type=str)
 parser.add_argument('--e', '--evaluate', action='store_true')
 parser.add_argument('--da_grl_plus', action='store_true')
-parser.add_argument('--w_adc', default=0.1, type=float)
+parser.add_argument('--w_da', default=3, type=float)
 parser.add_argument('--reverse_da_loss', action='store_true')
 
 parser.add_argument('--date', default='{:%Y%m%d}'.format(datetime.datetime.now()), type=str)
@@ -213,6 +213,7 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
             param_group['lr'] = lr
 
         lambd = min(2. / (1. + np.exp(-10. * p)) - 1, 0.1)
+        lambd2 = min(2. / (1. + np.exp(-args.w_da * p)) - 1, 0)
 
         loops = int(dg_sent_train.data_len / args.batch_size)
         for idx in range(loops):
@@ -281,7 +282,7 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
                 dc_loss = 0
                 adc_loss = 0
 
-            da_loss = (torch.exp(args.w_adc * e_) - 1) * (train_cls_loss_dc + test_sent_cls_loss_dc) / 2
+            da_loss = lambd2 * (train_cls_loss_dc + test_sent_cls_loss_dc) / 2
             total_loss = train_sent_cls_loss_adc + train_sent_norm_pen_adc + dc_loss + adc_loss + da_loss
 
             model.zero_grad()
