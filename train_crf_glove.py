@@ -24,6 +24,7 @@ from sklearn.metrics import confusion_matrix, f1_score, recall_score, precision_
 from model_batch_crf_glove import AspectSent
 import glob
 import datetime
+from tensorboardX import SummaryWriter
 
 # Get model names in the folder
 # model_names = sorted(name for name in models.__dict__
@@ -98,6 +99,8 @@ parser.add_argument('--print_freq', default=10, type=int)
 args = parser.parse_args()
 args.exp_name = '{}_{}'.format(args.date, args.exp_name)
 torch.cuda.set_device(args.gpu)
+logger = create_logger('global_logger', 'logs/' + args.exp_name + '/log.txt')
+writer = SummaryWriter('tfboard/' + args.exp_name)
 
 
 # tool functions
@@ -164,7 +167,7 @@ def save_checkpoint(save_model, i_iter, args, is_best=True):
 
 def update_test_model(args, best_valid_f1, dg_test, dg_valid, e_, exp, model, test_f1):
     valid_acc, valid_f1 = evaluate_test(dg_valid, model, args, mode='valid')
-    logger.info("epoch {}, Validation f1: {}".format(e_, valid_f1))
+
     # if valid_acc > best_acc:
     #     is_best = True
     #     best_acc = valid_acc
@@ -174,26 +177,31 @@ def update_test_model(args, best_valid_f1, dg_test, dg_valid, e_, exp, model, te
     #         output_samples = True
     #     test_acc, test_f1 = evaluate_test(dg_test, model, args, output_samples)
     #     logger.info("epoch {}, Test acc: {}".format(e_, test_acc))
+    output_samples = False
     if valid_f1 > best_valid_f1:
         is_best = True
         save_checkpoint(model, e_, args, is_best)
-        output_samples = False
+
         if e_ % 10 == 0:
             output_samples = True
-        test_acc, test_f1 = evaluate_test(dg_test, model, args, output_samples, mode='test')
-        logger.info("exp{}, epoch {}, Test f1_score: {}".format(exp, e_, test_f1))
-
-        model.train()
-        is_best = False
+    test_acc, test_f1 = evaluate_test(dg_test, model, args, output_samples, mode='test')
+    logger.info("exp{}, epoch {}, Test f1_score: {:.3f}".format(exp, e_, test_f1))
+    logger.info("exp{}, epoch {}, Validation f1: {:.3f}".format(exp, e_, valid_f1))
+    model.train()
+    is_best = False
     return test_f1, valid_f1
 
 
-def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, args, exp, dg_sent_train_eval):
+def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, args, exp, dg_sent_train_eval,
+          dg_valid_sent_cls1, dg_test_sent_cls1):
     cls_loss_value = AverageMeter(10)
-    best_acc = 0
+
     best_valid_f1 = 0
-    best_train_f1 = 0
-    test_f1 = 0
+    best_valid_acc = 0
+    early_stop_f1 = False
+    early_stop_acc = False
+    tot_idx = 0
+
     model.train()
     is_best = False
     logger.info("Start Experiment")
@@ -210,17 +218,17 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
 
         p = float(e_) / args.epoch
         lr = max(0.005 / (1. + 10 * p) ** 0.75, 0.002)
-        logger.info("Adjust lr to {}".format(lr))
+        logger.info("Adjust lr to {:.5f}".format(lr))
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
         lambd = min(2. / (1. + np.exp(-10. * p)) - 1, 0.1)
-        lambd2 = min(2. / (1. + np.exp(-args.w_da * p)) - 1, 0)  # 小于10
+        lambd2 = 2 / (1. + np.exp(-args.w_da * p)) - 1  # 小于10
 
         loops = int(dg_sent_train.data_len / args.batch_size)
         for idx in range(loops):
             sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(
-                dg_sent_train.get_ids_samples(is_balanced=False, args=args))
+                dg_sent_train.get_ids_samples(is_balanced=True, args=args))
 
             # if args.if_gpu:
             #     sent_vecs, mask_vecs = sent_vecs.cuda(device=args.gpu), mask_vecs.cuda(device=args.gpu)
@@ -234,15 +242,17 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
             _, train_sent_norm_pen_dc, train_score_dc, context_dc = model(sent_vecs, mask_vecs, label_list, sent_lens,
                                                                           mode='sent_cls_dc')
 
-            sent_loss,_,_,_ = model(sent_vecs, mask_vecs, label_list, sent_lens,
-                              mode='sent_cls', dc_context=context_dc, adc_context=context_adc)
+            sent_loss, _, _, _ = model(sent_vecs, mask_vecs, label_list, sent_lens,
+                                       mode='sent_cls', dc_context=context_dc, adc_context=context_adc)
 
             # cls_loss_value.update(sent_cls_loss.item())
             model.eval()
             train_score_adc_cp = train_score_adc.clone()
             model.train()
             train_cls_loss_dc = F.kl_div(train_score_adc_cp, torch.exp(train_score_dc))
-
+            test_sent_cls_loss_dc = torch.zeros(1).cuda()
+            dc_loss = torch.zeros(1).cuda()
+            adc_loss = torch.zeros(1).cuda()
             if args.da_grl_plus:
                 test_sent_vecs, test_mask_vecs, test_label_list, test_sent_lens, _, _, _ = next(
                     dg_domain_train.get_ids_samples(args=args))
@@ -289,54 +299,109 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
 
                 dc_loss = (domain_cls_loss1 + domain_norm_pen1 + domain_cls_loss2 + domain_norm_pen2) / 2
 
-            else:
-                test_sent_cls_loss_dc = torch.zeros(0).cuda()
-                dc_loss = torch.zeros(0).cuda()
-                adc_loss = torch.zeros(0).cuda()
-
             da_loss = (train_cls_loss_dc + test_sent_cls_loss_dc) * 0.5 * lambd2
+            total_loss = sent_loss
+            # if args.da_grl_plus:
+            #     model.zero_grad()
+            #     adc_loss.backward()
+            #     optimizer.step()
+            #     total_loss = sent_loss + train_sent_cls_loss_adc + train_sent_norm_pen_adc + dc_loss + da_loss  # +adc_loss
+            # else:
+            #     total_loss = sent_loss
 
-            total_loss = sent_loss + train_sent_cls_loss_adc + train_sent_norm_pen_adc + dc_loss + adc_loss + da_loss
+            sent_loss_valid = monitor_loss(args, dg_valid_sent_cls1, model)
+            sent_loss_test = monitor_loss(args, dg_test_sent_cls1, model)
 
             model.zero_grad()
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
             optimizer.step()
+            tot_idx += 1
 
-            if idx % args.print_freq == 0:
-                logger.info(
-                    "Loss| "
-                    "exp {}, e_ {}, "
-                    "tot {:.3f}, "
-                    "train_sent_adc {:.3f},"
-                    "train_sent_adc_pen {:.3f},"
-                    "domain lambda {:.3f},"
-                    "dc {:.3f}, "
-                    "adc {:.3f},"
-                    "da {:.3f},"
-                    "train_dc {:.3f},"
-                    "test_dc {:.3f}".format(exp,
-                                     e_,
-                                     total_loss.item(),
-                                     train_sent_cls_loss_adc.item(),
-                                     train_sent_norm_pen_adc.item(),
-                                     lambd,
-                                     dc_loss.item(),
-                                     adc_loss.item(),
-                                     da_loss.item(),
-                                     train_cls_loss_dc.item(),
-                                     test_sent_cls_loss_dc.item()))
+            writer.add_scalar('loss_{}/train_sent_cls_loss_adc'.format(exp), train_sent_cls_loss_adc, tot_idx)
+            writer.add_scalar('loss_{}/dc_loss'.format(exp), dc_loss, tot_idx)
+            writer.add_scalar('loss_{}/adc_loss'.format(exp), adc_loss, tot_idx)
+            writer.add_scalar('loss_{}/da_loss'.format(exp), da_loss, tot_idx)
+            writer.add_scalar('loss_{}/train_cls_loss_dc'.format(exp), train_cls_loss_dc, tot_idx)
+            writer.add_scalar('loss_{}/test_sent_cls_loss_dc'.format(exp), test_sent_cls_loss_dc, tot_idx)
+            writer.add_scalar('loss_{}/sent_loss_valid'.format(exp), sent_loss_valid, tot_idx)
+            writer.add_scalar('loss_{}/sent_loss_test'.format(exp), sent_loss_test, tot_idx)
+
+
+
+
+            # if idx % args.print_freq == 0:
+            #     logger.info(
+            #         "Loss| "
+            #         "exp {}, e_ {}, "
+            #         "tot {:.3f}, "
+            #         "train_sent_adc {:.3f},"
+            #         "train_sent_adc_pen {:.3f},"
+            #         "lamb1 {:.3f},"
+            #         "lamb2 {:.3f},"
+            #         "dc {:.3f}, "
+            #         "adc {:.3f},"
+            #         "da {:.3f},"
+            #         "train_dc {:.3f},"
+            #         "test_dc {:.3f}".format(exp,
+            #                                 e_,
+            #                                 total_loss.item(),
+            #                                 train_sent_cls_loss_adc.item(),
+            #                                 train_sent_norm_pen_adc.item(),
+            #                                 lambd,
+            #                                 lambd2,
+            #                                 dc_loss.item(),
+            #                                 adc_loss.item(),
+            #                                 da_loss.item(),
+            #                                 train_cls_loss_dc.item(),
+            #                                 test_sent_cls_loss_dc.item()))
 
         model.eval()
-        test_f1, valid_f1 = update_test_model(args, best_valid_f1, dg_sent_test, dg_sent_valid, e_, exp, model,
-                                              test_f1)
+        valid_acc, valid_f1 = evaluate_test(dg_sent_valid, model, args, mode='valid')
+        test_acc, test_f1 = evaluate_test(dg_sent_test, model, args, mode='test')
+
+        if not early_stop_f1 and valid_f1 >= best_valid_f1:
+            best_valid_f1 = valid_f1
+            logger.info("exp {}, e_ {},"
+                        "Best Test by f1| f1_score: {:.3f},acc: {:.3f} ".format(exp, e_, test_f1, test_acc))
+        elif not early_stop_f1 and valid_f1 < best_valid_f1:
+            early_stop_f1 = True
+
+        if not early_stop_acc and valid_acc >= best_valid_acc:
+            best_valid_acc = valid_acc
+            logger.info("exp {}, e_ {},"
+                        "Best Test by acc| f1_score: {:.3f},acc: {:.3f} ".format(exp, e_, test_f1, test_acc))
+        elif not early_stop_acc and valid_acc < best_valid_acc:
+            early_stop_acc = True
+
+        # test_f1, valid_f1 = update_test_model(args, best_valid_f1, dg_sent_test, dg_sent_valid, e_, exp, model,
+        #                                       test_f1)
         # train_acc, train_f1 = evaluate_test(dg_train_eval, model, args, False, mode='train')
 
-        best_valid_f1 = max(valid_f1, best_valid_f1)
-        logger.info("exp {}, "
-                    "Best Test f1_score: {:.3f}".format(exp, test_f1))
+        # best_valid_f1 = max(valid_f1, best_valid_f1)
+        # logger.info("exp {}, "
+        #             "Best Test f1_score: {:.3f}".format(exp, test_f1))
 
         model.train()
+        if early_stop_acc and early_stop_f1:
+            break
+
+
+def monitor_loss(args, dg_sent_valid, model):
+    model.eval()
+    sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(
+        dg_sent_valid.get_ids_samples(is_balanced=True, args=args))
+    _, _, _, context_adc = model(sent_vecs, mask_vecs,
+                                 label_list,
+                                 sent_lens,
+                                 mode='sent_cls_adc')
+    _, _, _, context_dc = model(sent_vecs, mask_vecs, label_list, sent_lens,
+                                mode='sent_cls_dc')
+    sent_loss_valid, _, _, _ = model(sent_vecs, mask_vecs, label_list, sent_lens,
+                                     mode='sent_cls', dc_context=context_dc, adc_context=context_adc)
+    model.train()
+
+    return sent_loss_valid
 
 
 def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
@@ -344,7 +409,7 @@ def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
     with open(mistake_samples, 'a') as f:
         f.write('Test begins...')
 
-    logger.info("Evaluting")
+    # logger.info("Evaluting")
     dr_test.reset_samples()
     model.eval()
     all_counter = 0
@@ -406,8 +471,7 @@ def main(train_path, valid_path, test_path, exp=0):
 
     # for file in files:
     #     load_config(file)
-    global logger
-    logger = create_logger('global_logger', 'logs/' + args.exp_name + '/log.txt')
+
     logger.info('{}'.format(args))
     # logger.info(
     #     '============Exp:{3}\ntraining:{0}\nvalid:{1}\ntest:{2}'.format(train_path, valid_path, test_path, exp))
@@ -435,10 +499,10 @@ def main(train_path, valid_path, test_path, exp=0):
     args.train_path = train_path
     args.valid_path = valid_path
     args.test_path = test_path
-    train_data = dr.load_data(args.train_path)
+    train_data = dr.load_data(args.train_path)[:32 * 10]
 
     if valid_path == test_path:
-        tmp_data = dr.load_data(args.test_path)
+        tmp_data = dr.load_data(args.test_path)[:32 * 10]
         valid_num = int(len(tmp_data) * 0.1)
         valid_data = copy.deepcopy(tmp_data[:valid_num])
         test_data = copy.deepcopy(tmp_data[valid_num:])
@@ -468,6 +532,10 @@ def main(train_path, valid_path, test_path, exp=0):
     dg_train_domain_cls = data_generator(args, da_train_data)
     dg_valid_sent_cls = data_generator(args, valid_data, False)
     dg_test_sent_cls = data_generator(args, test_data, False)
+
+    dg_valid_sent_cls1 = data_generator(args, valid_data)
+    dg_test_sent_cls1 = data_generator(args, test_data)
+
     dg_train_sent_cls_eval = data_generator(args, copy.deepcopy(train_data), False)
     # dg_train_domain_cls_eval = data_generator(args, copy.deepcopy(da_train_data), False)
 
@@ -488,7 +556,7 @@ def main(train_path, valid_path, test_path, exp=0):
 
         # train(model, dg_train_sent_cls, dg_valid_sent_cls, dg_test_sent_cls, args, exp, dg_train_sent_cls_eval,mode='sent_cls')
         train(model, dg_train_sent_cls, dg_train_domain_cls, dg_valid_sent_cls, dg_test_sent_cls, args, exp,
-              dg_train_sent_cls_eval)
+              dg_train_sent_cls_eval, dg_valid_sent_cls1, dg_test_sent_cls1)
 
     # else:
     #     print('NOT arg.training')
@@ -528,7 +596,7 @@ if __name__ == "__main__":
                 if valid_key == test_key:
                     exp += 1
                     main(train_path=traf, valid_path=valid, test_path=test, exp=exp)
-
+    writer.close()
     pass
 
     # main()
