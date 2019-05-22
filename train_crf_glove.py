@@ -42,9 +42,10 @@ import datetime
 parser = argparse.ArgumentParser(description='TSA')
 parser.add_argument('--pwd', default='', type=str)
 parser.add_argument('--e', '--evaluate', action='store_true')
-parser.add_argument('--da_grl', action='store_true')
-parser.add_argument('--domain_cls_loss_upper_bound', default=0.8, type=float)
+parser.add_argument('--da_grl_plus', action='store_true')
+parser.add_argument('--w_adc', default=0.1, type=float)
 parser.add_argument('--reverse_da_loss', action='store_true')
+
 parser.add_argument('--date', default='{:%Y%m%d}'.format(datetime.datetime.now()), type=str)
 parser.add_argument('--exp_name', default=0, type=int)
 
@@ -216,79 +217,101 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
         loops = int(dg_sent_train.data_len / args.batch_size)
         for idx in range(loops):
             sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(
-                dg_sent_train.get_ids_samples(is_balanced=False))
+                dg_sent_train.get_ids_samples(is_balanced=False, args=args))
 
-            if args.if_gpu:
-                sent_vecs, mask_vecs = sent_vecs.cuda(device=args.gpu), mask_vecs.cuda(device=args.gpu)
-                label_list, sent_lens = label_list.cuda(device=args.gpu), sent_lens.cuda(device=args.gpu)
+            # if args.if_gpu:
+            #     sent_vecs, mask_vecs = sent_vecs.cuda(device=args.gpu), mask_vecs.cuda(device=args.gpu)
+            #     label_list, sent_lens = label_list.cuda(device=args.gpu), sent_lens.cuda(device=args.gpu)
 
-            sent_cls_loss, sent_norm_pen = model(sent_vecs, mask_vecs, label_list, sent_lens, mode='sent_cls')
+            train_sent_cls_loss_adc, train_sent_norm_pen_adc, train_score_adc = model(sent_vecs, mask_vecs, label_list,
+                                                                                      sent_lens,
+                                                                                      mode='sent_cls_adc')
+
+            _, train_sent_norm_pen_dc, train_score_dc = model(sent_vecs, mask_vecs, label_list, sent_lens,
+                                                              mode='sent_cls_dc')
             # cls_loss_value.update(sent_cls_loss.item())
+            train_cls_loss_dc = nn.KLDivLoss(copy.deepcopy(train_score_adc), train_score_dc)
 
-            total_loss = sent_cls_loss + sent_norm_pen
-            model.zero_grad()
-            total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
-            optimizer.step()
-
-            if args.da_grl:
+            if args.da_grl_plus:
                 test_sent_vecs, test_mask_vecs, test_label_list, test_sent_lens, _, _, _ = next(
                     dg_domain_train.get_ids_samples())
 
                 test_label_list = torch.ones(test_label_list.shape).type('torch.LongTensor').cuda()
                 label_list = torch.zeros(test_label_list.shape).type('torch.LongTensor').cuda()
 
-                if args.if_gpu:
-                    test_sent_vecs, test_mask_vecs = test_sent_vecs.cuda(device=args.gpu), test_mask_vecs.cuda(
-                        device=args.gpu)
-                    test_label_list, test_sent_lens = test_label_list.cuda(device=args.gpu), test_sent_lens.cuda(
-                        device=args.gpu)
+                # if args.if_gpu:
+                #     test_sent_vecs, test_mask_vecs = test_sent_vecs.cuda(device=args.gpu), test_mask_vecs.cuda(
+                #         device=args.gpu)
+                #     test_label_list, test_sent_lens = test_label_list.cuda(device=args.gpu), test_sent_lens.cuda(
+                #         device=args.gpu)
 
                 ## ref: https://discuss.pytorch.org/t/solved-reverse-gradients-in-backward-pass/3589/10
                 domain_cls_loss1, domain_norm_pen1 = model(sent_vecs, mask_vecs, label_list, sent_lens,
-                                                           mode='domain_cls',
+                                                           mode='adc',
                                                            lambd=lambd)
 
                 domain_cls_loss2, domain_norm_pen2 = model(test_sent_vecs, test_mask_vecs, test_label_list,
                                                            test_sent_lens,
-                                                           mode='domain_cls',
+                                                           mode='adc',
                                                            lambd=lambd)
 
-                domain_total_loss = (domain_cls_loss1 + domain_norm_pen1 + domain_cls_loss2 + domain_norm_pen2) / 2
-                domain_total_loss = domain_total_loss if args.domain_cls_loss_upper_bound - domain_total_loss > 0 else torch.zeros(
-                    1).cuda()
+                adc_loss = (domain_cls_loss1 + domain_norm_pen1 + domain_cls_loss2 + domain_norm_pen2) / 2
 
-                if args.reverse_da_loss and domain_total_loss > 0:
-                    domain_total_loss = args.domain_cls_loss_upper_bound - domain_total_loss
+                domain_cls_loss1, domain_norm_pen1 = model(sent_vecs, mask_vecs, label_list, sent_lens,
+                                                           mode='dc',
+                                                           lambd=lambd)
 
-                if domain_total_loss > 0:
-                    model.zero_grad()
-                    domain_total_loss.backward()
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
-                    optimizer.step()
+                domain_cls_loss2, domain_norm_pen2 = model(test_sent_vecs, test_mask_vecs, test_label_list,
+                                                           test_sent_lens,
+                                                           mode='dc',
+                                                           lambd=lambd)
 
-                if idx % args.print_freq == 0:
-                    logger.info(
-                        "exp:{}, e_:{}, "
-                        "sent cls loss {:.3f}, "
-                        "domain cls loss {:.3f},"
-                        "domain lambda {:.3f}, "
-                        "with sent penalty {:.3f}".format(exp,
-                                                          e_,
-                                                          sent_cls_loss.item(),
-                                                          domain_total_loss.item(),
-                                                          lambd,
-                                                          sent_norm_pen.item()))
+                _, _, test_score_adc = model(test_sent_vecs, test_mask_vecs, test_label_list, test_sent_lens,
+                                             mode='sent_cls_adc')
+
+                _, _, test_score_dc = model(test_sent_vecs, test_mask_vecs, test_label_list, test_sent_lens,
+                                            mode='sent_cls_dc')
+
+                test_sent_cls_loss_dc = nn.KLDivLoss(copy.deepcopy(test_score_adc), test_score_dc)
+
+                dc_loss = (domain_cls_loss1 + domain_norm_pen1 + domain_cls_loss2 + domain_norm_pen2) / 2
+                total_loss += dc_loss + adc_loss
             else:
-                if idx % args.print_freq == 0:
-                    logger.info(
-                        "exp:{}, e_:{}, "
-                        "sent cls loss {:.3f}, "
-                        "with sent penalty {:.3f}".format(exp,
-                                                          e_,
-                                                          sent_cls_loss.item(),
+                test_sent_cls_loss_dc = 0
+                dc_loss = 0
+                adc_loss = 0
 
-                                                          sent_norm_pen.item()))
+            da_loss = (torch.exp(args.w_adc * e_) - 1) * (train_cls_loss_dc + test_sent_cls_loss_dc) / 2
+            total_loss = train_sent_cls_loss_adc + train_sent_norm_pen_adc + dc_loss + adc_loss + da_loss
+
+            model.zero_grad()
+            total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm, norm_type=2)
+            optimizer.step()
+
+            if idx % args.print_freq == 0:
+                logger.info(
+                    "Loss| "
+                    "exp {}, e_ {}, "
+                    "tot {:.3f}, "
+                    "train_sent_adc {:.3f},"
+                    "train_sent_adc_pen {:.3f},"
+                    "domain lambda {:.3f},"
+                    "dc, "
+                    "adc,"
+                    "da"
+                    "train_dc"
+                    "test_dc".format(exp,
+                                     e_,
+                                     total_loss.item(),
+                                     train_sent_cls_loss_adc.item(),
+                                     train_sent_norm_pen_adc.item(),
+                                     lambd,
+                                     dc_loss.item(),
+                                     adc_loss.item(),
+                                     da_loss.item(),
+                                     train_cls_loss_dc.item(),
+                                     test_sent_cls_loss_dc.item()))
 
         model.eval()
         test_f1, valid_f1 = update_test_model(args, best_valid_f1, dg_sent_test, dg_sent_valid, e_, exp, model,
@@ -296,7 +319,8 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
         # train_acc, train_f1 = evaluate_test(dg_train_eval, model, args, False, mode='train')
 
         best_valid_f1 = max(valid_f1, best_valid_f1)
-        logger.info("exp:{}, Best Test f1_score: {:.3f}".format(exp, test_f1))
+        logger.info("exp {}, "
+                    "Best Test f1_score: {:.3f}".format(exp, test_f1))
 
         model.train()
 

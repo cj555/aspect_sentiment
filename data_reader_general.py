@@ -683,7 +683,7 @@ class data_generator:
         target_ids = [target_ids[i.item()] for i in perm_idx]
         return sent_ids, mask_vecs, label_list, sent_lens, texts, targets, target_ids
 
-    def get_ids_samples(self, is_balanced=False):
+    def get_ids_samples(self, is_balanced=False, args=None):
         '''
         Get samples including ids of words, labels
         '''
@@ -730,6 +730,16 @@ class data_generator:
                                                                                                        targets,
                                                                                                        target_ids)
                 self.index += len(samples)
+
+        if args.if_gpu:
+            sent_ids, mask_vecs = sent_ids.cuda(device=args.gpu), mask_vecs.cuda(
+                device=args.gpu)
+            label_list, sent_lens = label_list.cuda(device=args.gpu), sent_lens.cuda(
+                device=args.gpu)
+            # texts, targets = texts.cuda(device=args.gpu), targets.cuda(
+            #     device=args.gpu)
+            # target_ids = target_ids.cuda(device=args.gpu)
+
         yield sent_ids, mask_vecs, label_list, sent_lens, texts, targets, target_ids
 
     def get_elmo_samples(self, is_with_texts=False):

@@ -52,23 +52,6 @@ class biLSTM(nn.Module):
         return unpacked
 
 
-# class GradReverse(Function):
-#
-#     def __init__(self, lambd):
-#         self.lambd = lambd
-#
-#     @staticmethod
-#     def forward(ctx, x):
-#         return x.view_as(x)
-#
-#     def set_lambda(self, lambd):
-#         self.lambd = lambd
-#
-#     @staticmethod
-#     def backward(ctx, grad_output):
-#         # return grad_output.neg()
-#         return (grad_output * -self.lambd)
-
 class GradReverse(Function):
     def __init__(self, lambd):
         self.lambd = lambd
@@ -101,20 +84,26 @@ class AspectSent(nn.Module):
         # self.conv = nn.Conv1d(input_dim, kernel_num, 3, dilation=2, padding=2)
 
         self.bilstm = biLSTM(config)
-        self.feat2tri = nn.Linear(kernel_num, 2 + 2)
-        self.inter_crf = LinearChainCrf(2 + 2)
 
-        self.feat2sent = nn.Linear(kernel_num, 3)
-        self.feat2domain = nn.Linear(kernel_num, 2)
-        # self.domaincls = nn.Linear(config.l_hidden_size, 3)  # train,dev,test
-        # self.is_valid = nn.Linear(config.l_hidden_size, 2)  # train,dev,test
-        # self.is_test = nn.Linear(config.l_hidden_size, 2)
-        # self.attn1 = nn.Linear(config.l_hidden_size, 1)
+        ## adc:Adversarial Domain Classification
+        self.feat2tri_adc = nn.Linear(kernel_num, 2 + 2)
+        self.inter_crf_adc = LinearChainCrf(2 + 2)
+
+        self.feat2sent_adc = nn.Linear(kernel_num, 3)
+        self.feat2domain_adc = nn.Linear(kernel_num, 2)
+
+        ## dc:Domain Classification
+        self.feat2tri_dc = nn.Linear(kernel_num, 2 + 2)
+        self.inter_crf_dc = LinearChainCrf(2 + 2)
+
+        self.feat2sent_dc = nn.Linear(kernel_num, 3)
+        self.feat2domain_dc = nn.Linear(kernel_num, 2)
 
         self.loss = nn.NLLLoss()
 
         self.tanh = nn.Tanh()
         self.dropout = nn.Dropout(config.dropout)
+
         # Modified by Richard Sun
         self.cat_layer = SimpleCat(config)
         self.cat_layer.load_vector()
@@ -229,34 +218,60 @@ class AspectSent(nn.Module):
         else:
             return label_scores, best_latent_seqs
 
-    def _compute_crf_scores(self, batch_size, context, lens, max_len, target_emb_avg_exp, mode='sent_cls'):
-        ###Addition model
-        u = target_emb_avg_exp
-        context = context + u  # Batch_size*max_len*embedding
-        # concatenation model
-        # context1 = torch.cat([context, target_emb_avg_exp], 2)
-        word_mask = torch.full((batch_size, max_len), 0)
-        for i in range(batch_size):
-            word_mask[i, :lens[i]] = 1.0
-        ###neural features
-        feats = self.feat2tri(context)  # Batch_size*sent_len*2
-        marginals = self.inter_crf.compute_marginal(feats, word_mask.type_as(feats))
-        # print(word_mask.sum(1))
-        select_polarities = [marginal[:, 1] for marginal in marginals]
-        gammas = [sp.sum() / 2 for sp in select_polarities]
-        sent_vs = [torch.mm(sp.unsqueeze(0), context[i, :lens[i], :]) for i, sp in enumerate(select_polarities)]
-        sent_vs = [sv / gamma for sv, gamma in zip(sent_vs, gammas)]  # normalization
-        sent_vs = torch.cat(sent_vs)  # batch_size, hidden_size
-        # sent_vs = [self.dropout(sent_v) for sent_v in sent_vs]
-        # label_scores = [self.feat2label(sent_v).squeeze(0) for sent_v in sent_vs]
-        # label_scores = torch.stack(label_scores)
-        sent_vs = self.dropout(sent_vs)
+    def _compute_crf_scores(self, batch_size, context, lens, max_len, target_emb_avg_exp, mode='adc'):
+        if mode == 'adc' or mode == 'sent_cls_adc':
+            ###Addition model
+            u = target_emb_avg_exp
+            context = context + u  # Batch_size*max_len*embedding
 
-        label_scores = self.feat2sent(sent_vs) if mode == 'sent_cls' else self.feat2domain(sent_vs)
+            word_mask = torch.full((batch_size, max_len), 0)
+            for i in range(batch_size):
+                word_mask[i, :lens[i]] = 1.0
+            ###neural features
+            feats = self.feat2tri_adc(context)  # Batch_size*sent_len*2
+            marginals = self.inter_crf_adc.compute_marginal(feats, word_mask.type_as(feats))
+            # print(word_mask.sum(1))
+            select_polarities = [marginal[:, 1] for marginal in marginals]
+            gammas = [sp.sum() / 2 for sp in select_polarities]
+            sent_vs = [torch.mm(sp.unsqueeze(0), context[i, :lens[i], :]) for i, sp in enumerate(select_polarities)]
+            sent_vs = [sv / gamma for sv, gamma in zip(sent_vs, gammas)]  # normalization
+            sent_vs = torch.cat(sent_vs)  # batch_size, hidden_size
 
-        best_latent_seqs = self.inter_crf.decode(feats, word_mask.type_as(feats))
-        # print(best_latent_seqs[0])
-        return best_latent_seqs, label_scores, select_polarities
+            sent_vs = self.dropout(sent_vs)
+
+            label_scores = self.feat2sent_adc(sent_vs) if mode == 'sent_cls_adc' else self.feat2domain_adc(sent_vs)
+
+            best_latent_seqs = self.inter_crf_adc.decode(feats, word_mask.type_as(feats))
+            # print(best_latent_seqs[0])
+            return best_latent_seqs, label_scores, select_polarities
+
+        elif mode == 'dc' or mode == 'sent_cls_dc':
+            ###Addition model
+            u = target_emb_avg_exp
+            context = context + u  # Batch_size*max_len*embedding
+
+            word_mask = torch.full((batch_size, max_len), 0)
+            for i in range(batch_size):
+                word_mask[i, :lens[i]] = 1.0
+            ###neural features
+            feats = self.feat2tri_dc(context)  # Batch_size*sent_len*2
+            marginals = self.inter_crf_dc.compute_marginal(feats, word_mask.type_as(feats))
+            # print(word_mask.sum(1))
+            select_polarities = [marginal[:, 1] for marginal in marginals]
+            gammas = [sp.sum() / 2 for sp in select_polarities]
+            sent_vs = [torch.mm(sp.unsqueeze(0), context[i, :lens[i], :]) for i, sp in enumerate(select_polarities)]
+            sent_vs = [sv / gamma for sv, gamma in zip(sent_vs, gammas)]  # normalization
+            sent_vs = torch.cat(sent_vs)  # batch_size, hidden_size
+
+            sent_vs = self.dropout(sent_vs)
+
+            label_scores = self.feat2sent_dc(sent_vs) if mode == 'sent_cls_dc' else self.feat2domain_dc(sent_vs)
+
+            best_latent_seqs = self.inter_crf_dc.decode(feats, word_mask.type_as(feats))
+            # print(best_latent_seqs[0])
+            return best_latent_seqs, label_scores, select_polarities
+        else:
+            raise ValueError('no such mode')
 
     def forward(self, sents, masks, labels, lens, mode='sent_cls', lambd=1.0):
         """
@@ -278,23 +293,23 @@ class AspectSent(nn.Module):
         if self.config.if_reset:  self.cat_layer.reset_binary()
         sents = self.cat_layer(sents, masks)
 
-        if mode == 'sent_cls' or mode == 'domain_cls':
+        if mode == 'sent_cls_adc' or mode == 'adc' or mode == 'dc' or mode == 'sent_cls_dc':
             scores, s_prob = self.compute_scores(sents, masks, lens, mode=mode)
             s_prob_norm = torch.stack([s.norm(1) for s in s_prob]).mean()
 
-            pena = F.relu(self.inter_crf.transitions[1, 0] - self.inter_crf.transitions[0, 0]) + \
-                   F.relu(self.inter_crf.transitions[0, 1] - self.inter_crf.transitions[1, 1])
+            pena = F.relu(self.inter_crf_adc.transitions[1, 0] - self.inter_crf_adc.transitions[0, 0]) + \
+                   F.relu(self.inter_crf_adc.transitions[0, 1] - self.inter_crf_adc.transitions[1, 1])
             norm_pen = self.config.C1 * pena + self.config.C2 * s_prob_norm
 
             # print('Transition Penalty:', pena)
             # print('Marginal Penalty:', s_prob_norm)
-            if mode == 'domain_cls':
+            if mode == 'adc':
                 scores = grad_reverse(scores, lambd)
             scores = F.log_softmax(scores, 1)  # Batch_size*label_size
 
             cls_loss = self.loss(scores, labels)
 
-            return cls_loss, norm_pen
+            return cls_loss, norm_pen, scores
 
         # elif mode == 'domain_cls':
         #     # if self.config.if_reset:  self.cat_layer.reset_binary()
