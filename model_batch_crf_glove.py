@@ -69,7 +69,7 @@ def grad_reverse(x, lambd):
 
 # consits of three components
 class AspectSent(nn.Module):
-    def __init__(self, config, mode='sent_cls'):
+    def __init__(self, config):
         """
          LSTM+Aspect
         :param config:

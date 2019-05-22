@@ -2,6 +2,7 @@
 from __future__ import division
 import torch
 from data_reader_general import data_reader, data_generator
+import torch.nn as nn
 import pickle
 import numpy as np
 import codecs
@@ -43,8 +44,9 @@ parser = argparse.ArgumentParser(description='TSA')
 parser.add_argument('--pwd', default='', type=str)
 parser.add_argument('--e', '--evaluate', action='store_true')
 parser.add_argument('--da_grl_plus', action='store_true')
+
 parser.add_argument('--w_da', default=3, type=float)
-parser.add_argument('--reverse_da_loss', action='store_true')
+parser.add_argument('--reverse_da_loss', action='store_false')
 
 parser.add_argument('--date', default='{:%Y%m%d}'.format(datetime.datetime.now()), type=str)
 parser.add_argument('--exp_name', default=0, type=int)
@@ -213,7 +215,7 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
             param_group['lr'] = lr
 
         lambd = min(2. / (1. + np.exp(-10. * p)) - 1, 0.1)
-        lambd2 = min(2. / (1. + np.exp(-args.w_da * p)) - 1, 0)
+        lambd2 = min(2. / (1. + np.exp(-args.w_da * p)) - 1, 0)  # 小于10
 
         loops = int(dg_sent_train.data_len / args.batch_size)
         for idx in range(loops):
@@ -231,12 +233,19 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
 
             _, train_sent_norm_pen_dc, train_score_dc, context_dc = model(sent_vecs, mask_vecs, label_list, sent_lens,
                                                                           mode='sent_cls_dc')
+
+            sent_loss,_,_,_ = model(sent_vecs, mask_vecs, label_list, sent_lens,
+                              mode='sent_cls', dc_context=context_dc, adc_context=context_adc)
+
             # cls_loss_value.update(sent_cls_loss.item())
-            train_cls_loss_dc = nn.KLDivLoss(copy.deepcopy(train_score_adc), train_score_dc)
+            model.eval()
+            train_score_adc_cp = train_score_adc.clone()
+            model.train()
+            train_cls_loss_dc = F.kl_div(train_score_adc_cp, torch.exp(train_score_dc))
 
             if args.da_grl_plus:
                 test_sent_vecs, test_mask_vecs, test_label_list, test_sent_lens, _, _, _ = next(
-                    dg_domain_train.get_ids_samples())
+                    dg_domain_train.get_ids_samples(args=args))
 
                 test_label_list = torch.ones(test_label_list.shape).type('torch.LongTensor').cuda()
                 label_list = torch.zeros(test_label_list.shape).type('torch.LongTensor').cuda()
@@ -273,20 +282,19 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
 
                 _, _, test_score_dc, _ = model(test_sent_vecs, test_mask_vecs, test_label_list, test_sent_lens,
                                                mode='sent_cls_dc')
-
-                test_sent_cls_loss_dc = nn.KLDivLoss(copy.deepcopy(test_score_adc), test_score_dc)
+                model.eval()
+                test_score_adc_cp = test_score_adc.clone()
+                model.train()
+                test_sent_cls_loss_dc = F.kl_div(test_score_adc_cp, torch.exp(test_score_dc))
 
                 dc_loss = (domain_cls_loss1 + domain_norm_pen1 + domain_cls_loss2 + domain_norm_pen2) / 2
 
             else:
-                test_sent_cls_loss_dc = 0
-                dc_loss = 0
-                adc_loss = 0
+                test_sent_cls_loss_dc = torch.zeros(0).cuda()
+                dc_loss = torch.zeros(0).cuda()
+                adc_loss = torch.zeros(0).cuda()
 
-            da_loss = lambd2 * (train_cls_loss_dc + test_sent_cls_loss_dc) / 2
-
-            sent_loss = model(sent_vecs, mask_vecs, label_list, sent_lens,
-                              mode='sent_cls', dc_context=dcontext_dc, adc_context=context_adc)
+            da_loss = (train_cls_loss_dc + test_sent_cls_loss_dc) * 0.5 * lambd2
 
             total_loss = sent_loss + train_sent_cls_loss_adc + train_sent_norm_pen_adc + dc_loss + adc_loss + da_loss
 
@@ -303,11 +311,11 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
                     "train_sent_adc {:.3f},"
                     "train_sent_adc_pen {:.3f},"
                     "domain lambda {:.3f},"
-                    "dc, "
-                    "adc,"
-                    "da"
-                    "train_dc"
-                    "test_dc".format(exp,
+                    "dc {:.3f}, "
+                    "adc {:.3f},"
+                    "da {:.3f},"
+                    "train_dc {:.3f},"
+                    "test_dc {:.3f}".format(exp,
                                      e_,
                                      total_loss.item(),
                                      train_sent_cls_loss_adc.item(),
@@ -474,7 +482,7 @@ def main(train_path, valid_path, test_path, exp=0):
     # optimizer = create_opt(parameters, args)
 
     if args.training:
-        model = AspectSent(args, mode='domain_cls')
+        model = AspectSent(args)
         if args.if_gpu:
             model = model.cuda(device=args.gpu)
 
