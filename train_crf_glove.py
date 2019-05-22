@@ -224,12 +224,13 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
             #     sent_vecs, mask_vecs = sent_vecs.cuda(device=args.gpu), mask_vecs.cuda(device=args.gpu)
             #     label_list, sent_lens = label_list.cuda(device=args.gpu), sent_lens.cuda(device=args.gpu)
 
-            train_sent_cls_loss_adc, train_sent_norm_pen_adc, train_score_adc = model(sent_vecs, mask_vecs, label_list,
-                                                                                      sent_lens,
-                                                                                      mode='sent_cls_adc')
+            train_sent_cls_loss_adc, train_sent_norm_pen_adc, train_score_adc, context_adc = model(sent_vecs, mask_vecs,
+                                                                                                   label_list,
+                                                                                                   sent_lens,
+                                                                                                   mode='sent_cls_adc')
 
-            _, train_sent_norm_pen_dc, train_score_dc = model(sent_vecs, mask_vecs, label_list, sent_lens,
-                                                              mode='sent_cls_dc')
+            _, train_sent_norm_pen_dc, train_score_dc, context_dc = model(sent_vecs, mask_vecs, label_list, sent_lens,
+                                                                          mode='sent_cls_dc')
             # cls_loss_value.update(sent_cls_loss.item())
             train_cls_loss_dc = nn.KLDivLoss(copy.deepcopy(train_score_adc), train_score_dc)
 
@@ -247,43 +248,47 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
                 #         device=args.gpu)
 
                 ## ref: https://discuss.pytorch.org/t/solved-reverse-gradients-in-backward-pass/3589/10
-                domain_cls_loss1, domain_norm_pen1 = model(sent_vecs, mask_vecs, label_list, sent_lens,
-                                                           mode='adc',
-                                                           lambd=lambd)
+                domain_cls_loss1, domain_norm_pen1, _, _ = model(sent_vecs, mask_vecs, label_list, sent_lens,
+                                                                 mode='adc',
+                                                                 lambd=lambd)
 
-                domain_cls_loss2, domain_norm_pen2 = model(test_sent_vecs, test_mask_vecs, test_label_list,
-                                                           test_sent_lens,
-                                                           mode='adc',
-                                                           lambd=lambd)
+                domain_cls_loss2, domain_norm_pen2, _, _ = model(test_sent_vecs, test_mask_vecs, test_label_list,
+                                                                 test_sent_lens,
+                                                                 mode='adc',
+                                                                 lambd=lambd)
 
                 adc_loss = (domain_cls_loss1 + domain_norm_pen1 + domain_cls_loss2 + domain_norm_pen2) / 2
 
-                domain_cls_loss1, domain_norm_pen1 = model(sent_vecs, mask_vecs, label_list, sent_lens,
-                                                           mode='dc',
-                                                           lambd=lambd)
+                domain_cls_loss1, domain_norm_pen1, _, _ = model(sent_vecs, mask_vecs, label_list, sent_lens,
+                                                                 mode='dc',
+                                                                 lambd=lambd)
 
-                domain_cls_loss2, domain_norm_pen2 = model(test_sent_vecs, test_mask_vecs, test_label_list,
-                                                           test_sent_lens,
-                                                           mode='dc',
-                                                           lambd=lambd)
+                domain_cls_loss2, domain_norm_pen2, _, _ = model(test_sent_vecs, test_mask_vecs, test_label_list,
+                                                                 test_sent_lens,
+                                                                 mode='dc',
+                                                                 lambd=lambd)
 
-                _, _, test_score_adc = model(test_sent_vecs, test_mask_vecs, test_label_list, test_sent_lens,
-                                             mode='sent_cls_adc')
+                _, _, test_score_adc, _ = model(test_sent_vecs, test_mask_vecs, test_label_list, test_sent_lens,
+                                                mode='sent_cls_adc')
 
-                _, _, test_score_dc = model(test_sent_vecs, test_mask_vecs, test_label_list, test_sent_lens,
-                                            mode='sent_cls_dc')
+                _, _, test_score_dc, _ = model(test_sent_vecs, test_mask_vecs, test_label_list, test_sent_lens,
+                                               mode='sent_cls_dc')
 
                 test_sent_cls_loss_dc = nn.KLDivLoss(copy.deepcopy(test_score_adc), test_score_dc)
 
                 dc_loss = (domain_cls_loss1 + domain_norm_pen1 + domain_cls_loss2 + domain_norm_pen2) / 2
-                total_loss += dc_loss + adc_loss
+
             else:
                 test_sent_cls_loss_dc = 0
                 dc_loss = 0
                 adc_loss = 0
 
             da_loss = lambd2 * (train_cls_loss_dc + test_sent_cls_loss_dc) / 2
-            total_loss = train_sent_cls_loss_adc + train_sent_norm_pen_adc + dc_loss + adc_loss + da_loss
+
+            sent_loss = model(sent_vecs, mask_vecs, label_list, sent_lens,
+                              mode='sent_cls', dc_context=dcontext_dc, adc_context=context_adc)
+            
+            total_loss = sent_loss + train_sent_cls_loss_adc + train_sent_norm_pen_adc + dc_loss + adc_loss + da_loss
 
             model.zero_grad()
             total_loss.backward()

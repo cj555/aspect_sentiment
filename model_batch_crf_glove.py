@@ -289,10 +289,6 @@ class AspectSent(nn.Module):
         # scores: batch_size*label_size
         # s_prob:batch_size*sent_len
 
-        # sents = grad_reverse(sents)
-        # masks = grad_reverse(masks)
-        # labels = grad_reverse(labels)
-
         if self.config.if_reset:  self.cat_layer.reset_binary()
         sents = self.cat_layer(sents, masks)
 
