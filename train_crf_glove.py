@@ -287,7 +287,7 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
 
             sent_loss = model(sent_vecs, mask_vecs, label_list, sent_lens,
                               mode='sent_cls', dc_context=dcontext_dc, adc_context=context_adc)
-            
+
             total_loss = sent_loss + train_sent_cls_loss_adc + train_sent_norm_pen_adc + dc_loss + adc_loss + da_loss
 
             model.zero_grad()
@@ -343,15 +343,17 @@ def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
     correct_count = 0
     true_labels = []
     pred_labels = []
-    logger.info("transitions matrix {}".format(model.inter_crf.transitions.data))
-    num_seq = 0
+    # logger.info("transitions matrix {}".format(model.inter_crf.transitions.data))
+    num_seq_adc = 0
+    num_seq_dc = 0
     while dr_test.index < dr_test.data_len:
-        sent, mask, label, sent_len, texts, targets, _ = next(dr_test.get_ids_samples())
-        if args.if_gpu:
-            sent, mask, sent_len, label = sent.cuda(device=args.gpu), mask.cuda(device=args.gpu), sent_len.cuda(
-                device=args.gpu), label.cuda(device=args.gpu)
-        pred_label, best_seq = model.predict(sent, mask, sent_len)
-        num_seq += len([i for i in best_seq if sum(i) > 0])
+        sent, mask, label, sent_len, texts, targets, _ = next(dr_test.get_ids_samples(args=args))
+        # if args.if_gpu:
+        #     sent, mask, sent_len, label = sent.cuda(device=args.gpu), mask.cuda(device=args.gpu), sent_len.cuda(
+        #         device=args.gpu), label.cuda(device=args.gpu)
+        pred_label, best_seq_adc, best_seq_dc = model.predict(sent, mask, sent_len)
+        num_seq_adc += len([i for i in best_seq_adc if sum(i) > 0])
+        num_seq_dc += len([i for i in best_seq_dc if sum(i) > 0])
 
         # Compute correct predictions
         correct_count += sum(pred_label == label).item()
@@ -378,10 +380,12 @@ def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
                 'f1:{:.3f},'
                 'precison:{:.3f},'
                 'recall:{:.3f},'
-                'no of non zero seq:{:.3f}'.format(mode, acc, f1,
-                                                   precision_score(true_labels, pred_labels, average='macro'),
-                                                   recall_score(true_labels, pred_labels, average='macro'),
-                                                   num_seq / dr_test.data_len))
+                'no of non zero adc seq:{:.3f},'
+                'no of non zero dc seq:{:.3f}'.format(mode, acc, f1,
+                                                      precision_score(true_labels, pred_labels, average='macro'),
+                                                      recall_score(true_labels, pred_labels, average='macro'),
+                                                      num_seq_adc / dr_test.data_len,
+                                                      num_seq_dc / dr_test.data_len))
     #     print('Confusion Matrix')
     #     print(confusion_matrix(true_labels, pred_labels))
     #     print('f1_score:', f1_score(true_labels, pred_labels, average='macro'))
