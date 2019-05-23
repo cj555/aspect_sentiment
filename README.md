@@ -70,7 +70,8 @@ via Constructing Auxiliary Sentence [[Paper, AAAI2019]](https://arxiv.org/pdf/19
 
 ## semi-supervised learning
 
-1. MixMatch: A Holistic Approach to Semi-Supervised Learning [[Paper, ]](https://arxiv.org/pdf/1905.02249.pdf) [[Code, TensorFlow]](https://github.com/google-research/mixmatch) [[Chinese]](https://zhuanlan.zhihu.com/p/66281890）
+1. MixMatch: A Holistic Approach to Semi-Supervised Learning [[Paper, ]](https://arxiv.org/pdf/1905.02249.pdf) [[Code, TensorFlow]](https://github.com/google-research/mixmatch) [[Chinese]](https://zhuanlan.zhihu.com/p/66281890)
+
 
 
 
