@@ -71,6 +71,9 @@ parser.add_argument('--l_hidden_size', default=256, type=int)
 parser.add_argument('--l_num_layers', default=2, type=int)
 parser.add_argument('--l_dropout', default=0.3, type=float)
 parser.add_argument('--dropout', default=0.3, type=float)
+parser.add_argument('--train_adc2dc', action='store_true')  # CRF penalty
+parser.add_argument('--test_adc2dc', action='store_true')  # CRF penalty
+
 parser.add_argument('--clip_norm', default=3, type=float)
 
 parser.add_argument('--C1', default=0.01, type=float)  # CRF penalty
@@ -258,10 +261,16 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
                                        mode='sent_cls', dc_context=context_dc, adc_context=context_adc)
 
             # cls_loss_value.update(sent_cls_loss.item())
-            model.eval()
-            train_score_adc_cp = train_score_adc.clone()
-            model.train()
-            train_cls_loss_dc = F.mse_loss(torch.exp(train_score_adc_cp), torch.exp(train_score_dc))
+            if not args.train_adc2dc:
+                model.eval()
+                train_score_adc_cp = train_score_adc.clone()
+                model.train()
+                train_cls_loss_dc = F.mse_loss(torch.exp(train_score_adc_cp), torch.exp(train_score_dc))
+            else:
+                model.eval()
+                train_score_dc_cp = train_score_dc.clone()
+                model.train()
+                train_cls_loss_dc = F.mse_loss(torch.exp(train_score_dc_cp), torch.exp(train_score_adc))
             test_sent_cls_loss_dc = torch.zeros(1).cuda()
             dc_loss = torch.zeros(1).cuda()
             adc_loss = torch.zeros(1).cuda()
@@ -304,10 +313,17 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
 
                 _, _, test_score_dc, _ = model(test_sent_vecs, test_mask_vecs, test_label_list, test_sent_lens,
                                                mode='sent_cls_dc')
-                model.eval()
-                test_score_adc_cp = test_score_adc.clone()
-                model.train()
-                test_sent_cls_loss_dc = F.mse_loss(torch.exp(test_score_adc_cp), torch.exp(test_score_dc))
+
+                if not args.test_adc2dc:
+                    model.eval()
+                    test_score_adc_cp = test_score_adc.clone()
+                    model.train()
+                    test_sent_cls_loss_dc = F.mse_loss(torch.exp(test_score_adc_cp), torch.exp(test_score_dc))
+                else:
+                    model.eval()
+                    test_score_dc_cp = test_score_dc.clone()
+                    model.train()
+                    test_sent_cls_loss_dc = F.mse_loss(torch.exp(test_score_dc_cp), torch.exp(test_score_dc))
 
                 dc_loss = (domain_cls_loss1 + domain_norm_pen1 + domain_cls_loss2 + domain_norm_pen2) / 2
 
