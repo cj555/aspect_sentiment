@@ -68,6 +68,10 @@ via Constructing Auxiliary Sentence [[Paper, AAAI2019]](https://arxiv.org/pdf/19
 ## others
 1. An Attentive Survey of Attention Models [[Paper, IJCAI2019]](https://arxiv.org/abs/1904.02874)
 
+## semi-supervised learning
+
+1. MixMatch: A Holistic Approach to Semi-Supervised Learning [[Paper, ]](https://arxiv.org/pdf/1905.02249.pdf) [[Code, TensorFlow]](https://github.com/google-research/mixmatch)
+
 
 # Other Resources
 
