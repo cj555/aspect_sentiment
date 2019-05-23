@@ -45,8 +45,15 @@ parser = argparse.ArgumentParser(description='TSA')
 parser.add_argument('--pwd', default='', type=str)
 parser.add_argument('--e', '--evaluate', action='store_true')
 parser.add_argument('--da_grl_plus', action='store_true')
+parser.add_argument('--tb_comment', default='', type=str)
+parser.add_argument('--tb_note', default='', type=str)
 
-parser.add_argument('--w_da', default=3, type=float)
+parser.add_argument('--gamma', default=10, type=float)
+parser.add_argument('--theta', default=1, type=float)
+parser.add_argument('--consistency', default=0.1, type=float)
+
+parser.add_argument('--lambd2', default=1, type=float)
+
 parser.add_argument('--reverse_da_loss', action='store_false')
 
 parser.add_argument('--date', default='{:%Y%m%d}'.format(datetime.datetime.now()), type=str)
@@ -100,7 +107,8 @@ args = parser.parse_args()
 args.exp_name = '{}_{}'.format(args.date, args.exp_name)
 torch.cuda.set_device(args.gpu)
 logger = create_logger('global_logger', 'logs/' + args.exp_name + '/log.txt')
-writer = SummaryWriter('tfboard/' + args.exp_name)
+writer = SummaryWriter('tfboard/{}_{}'.format(args.exp_name, args.tb_comment))
+exp = 0
 
 
 # tool functions
@@ -214,19 +222,23 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
     for e_ in range(args.epoch):
 
         # if e_ % args.adjust_every == 0:
-        #     adjust_learning_rate(optimizer, e_, args)
-
-        p = float(e_) / args.epoch
-        lr = max(0.005 / (1. + 10 * p) ** 0.75, 0.002)
+        # adjust_learning_rate(optimizer, e_, args)
+        lr = max(0.005 / (1. + 10 * float(e_) / args.epoch) ** 0.75, 0.002)
         logger.info("Adjust lr to {:.5f}".format(lr))
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
-        lambd = min(2. / (1. + np.exp(-10. * p)) - 1, 0.1)
-        lambd2 = 2 / (1. + np.exp(-args.w_da * p)) - 1  # 小于10
+        # lambd : https://github.com/CuthbertCai/pytorch_DANN/blob/master/train/train.py
+        start_steps = e_ * args.batch_size
+        total_steps = args.epoch * args.batch_size
+
+        # lambd = min(2. / (1. + np.exp(-10. * p)) - 1, 0.1)
 
         loops = int(dg_sent_train.data_len / args.batch_size)
         for idx in range(loops):
+            p = float(idx + start_steps) / total_steps
+            lambd = 2. / (1. + np.exp(-args.gamma * p)) - 1
+            lambd2 = 2. / (1. + np.exp(-args.gamma * p)) - 1
             sent_vecs, mask_vecs, label_list, sent_lens, _, _, _ = next(
                 dg_sent_train.get_ids_samples(is_balanced=True, args=args))
 
@@ -249,7 +261,7 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
             model.eval()
             train_score_adc_cp = train_score_adc.clone()
             model.train()
-            train_cls_loss_dc = F.kl_div(train_score_adc_cp, torch.exp(train_score_dc))
+            train_cls_loss_dc = F.mse_loss(torch.exp(train_score_adc_cp), torch.exp(train_score_dc))
             test_sent_cls_loss_dc = torch.zeros(1).cuda()
             dc_loss = torch.zeros(1).cuda()
             adc_loss = torch.zeros(1).cuda()
@@ -295,20 +307,21 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
                 model.eval()
                 test_score_adc_cp = test_score_adc.clone()
                 model.train()
-                test_sent_cls_loss_dc = F.kl_div(test_score_adc_cp, torch.exp(test_score_dc))
+                test_sent_cls_loss_dc = F.mse_loss(torch.exp(test_score_adc_cp), torch.exp(test_score_dc))
 
                 dc_loss = (domain_cls_loss1 + domain_norm_pen1 + domain_cls_loss2 + domain_norm_pen2) / 2
 
-            da_loss = (train_cls_loss_dc + test_sent_cls_loss_dc) * 0.5 * lambd2
+            # Consistency Regularization
+            consistency_reg = (train_cls_loss_dc + test_sent_cls_loss_dc) * 0.5 * args.lambd2
 
-            if args.da_grl_plus:
-                model.zero_grad()
-                adc_loss.backward()
-                optimizer.step()
+            # if args.da_grl_plus:
+            #     model.zero_grad()
+            #     adc_loss.backward()
+            #     optimizer.step()
             #     total_loss = sent_loss + train_sent_cls_loss_adc + train_sent_norm_pen_adc + dc_loss + da_loss  # +adc_loss
             # else:
             #     total_loss = sent_loss
-            total_loss = sent_loss + dc_loss
+            total_loss = sent_loss + args.theta * adc_loss + args.consistency * consistency_reg * lambd2
             sent_loss_valid = monitor_loss(args, dg_valid_sent_cls1, model)
             sent_loss_test = monitor_loss(args, dg_test_sent_cls1, model)
 
@@ -322,7 +335,7 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
             writer.add_scalar('loss_{}/train_sent_cls_loss_adc'.format(exp), train_sent_cls_loss_adc, tot_idx)
             writer.add_scalar('loss_{}/dc_loss'.format(exp), dc_loss, tot_idx)
             writer.add_scalar('loss_{}/adc_loss'.format(exp), adc_loss, tot_idx)
-            writer.add_scalar('loss_{}/da_loss'.format(exp), da_loss, tot_idx)
+            writer.add_scalar('loss_{}/consistent_reg'.format(exp), consistency_reg, tot_idx)
             writer.add_scalar('loss_{}/train_cls_loss_dc'.format(exp), train_cls_loss_dc, tot_idx)
             writer.add_scalar('loss_{}/test_sent_cls_loss_dc'.format(exp), test_sent_cls_loss_dc, tot_idx)
             writer.add_scalar('loss_{}/sent_loss_valid'.format(exp), sent_loss_valid, tot_idx)
@@ -403,9 +416,9 @@ def monitor_loss(args, dg_sent_valid, model):
 
 
 def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
-    mistake_samples = '{0}_mistakes.txt'.format(args.exp_name)
-    with open(mistake_samples, 'a') as f:
-        f.write('Test begins...')
+    # mistake_samples = '{0}_mistakes.txt'.format(args.exp_name)
+    # with open(mistake_samples, 'a') as f:
+    #     f.write('Test begins...')
 
     # logger.info("Evaluting")
     dr_test.reset_samples()
@@ -436,27 +449,28 @@ def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
         indices = torch.nonzero(pred_label != label)
         if len(indices) > 0:
             indices = indices.squeeze(1)
-        if sample_out:
-            with open(mistake_samples, 'a') as f:
-                for i in indices:
-                    line = texts[i] + '###' + ' '.join(targets[i]) + '###' + str(label[i]) + '###' + str(
-                        pred_label[i]) + '\n'
-                    f.write(line)
+        for i in indices:
+            line = "target:{}, text:{},true:{},pred,{}".format(targets[i], texts[i], label[i], pred_label[i])
+            writer.add_text('wrong sample/{}'.format(exp), "{}".format(line))
 
     acc = correct_count * 1.0 / dr_test.data_len
     f1 = f1_score(true_labels, pred_labels, average='macro')
     # logger.info('Confusion Matrix:')
     # logger.info(confusion_matrix(true_labels, pred_labels))
-    logger.info('{}|Acc:{:.3f},'
-                'f1:{:.3f},'
-                'precison:{:.3f},'
-                'recall:{:.3f},'
-                'no of non zero adc seq:{:.3f},'
-                'no of non zero dc seq:{:.3f}'.format(mode, acc, f1,
-                                                      precision_score(true_labels, pred_labels, average='macro'),
-                                                      recall_score(true_labels, pred_labels, average='macro'),
-                                                      num_seq_adc / dr_test.data_len,
-                                                      num_seq_dc / dr_test.data_len))
+    writer.add_text('performance/{}'.format(exp), '{}|Acc:{:.3f},'
+                                                  'f1:{:.3f},'
+                                                  'precison:{:.3f},'
+                                                  'recall:{:.3f},'
+                                                  'no of non zero adc seq:{:.3f},'
+                                                  'no of non zero dc seq:{:.3f}'.format(mode, acc, f1,
+                                                                                        precision_score(true_labels,
+                                                                                                        pred_labels,
+                                                                                                        average='macro'),
+                                                                                        recall_score(true_labels,
+                                                                                                     pred_labels,
+                                                                                                     average='macro'),
+                                                                                        num_seq_adc / dr_test.data_len,
+                                                                                        num_seq_dc / dr_test.data_len))
     #     print('Confusion Matrix')
     #     print(confusion_matrix(true_labels, pred_labels))
     #     print('f1_score:', f1_score(true_labels, pred_labels, average='macro'))
@@ -464,22 +478,22 @@ def evaluate_test(dr_test, model, args, sample_out=False, mode='valid'):
     return acc, f1
 
 
-def main(train_path, valid_path, test_path, exp=0):
+def main(train_path, valid_path, test_path):
     """ Create the model and start the training."""
 
     # for file in files:
     #     load_config(file)
 
-    logger.info('{}'.format(args))
+    # logger.info('{}'.format(args))
     # logger.info(
     #     '============Exp:{3}\ntraining:{0}\nvalid:{1}\ntest:{2}'.format(train_path, valid_path, test_path, exp))
-    logger.info(
-        '============\n'
-        'Exp:{3}, training: {0},'
-        '\nvalid: {1}, '
-        '\ntest: {2}'.format(train_path.split('/')[-1],
-                             valid_path.split('/')[-1],
-                             test_path.split('/')[-1], exp))
+    writer.add_text('data/{}'.format(exp),
+                    '============\n'
+                    'Exp:{3}, training: {0},'
+                    '\nvalid: {1}, '
+                    '\ntest: {2}'.format(train_path.split('/')[-1],
+                                         valid_path.split('/')[-1],
+                                         test_path.split('/')[-1], exp))
 
     # for key, val in vars(args).items():
     #     logger.info("{:16} {}".format(key, val))
@@ -509,7 +523,9 @@ def main(train_path, valid_path, test_path, exp=0):
         valid_data = dr.load_data(args.valid_path)
         test_data = dr.load_data(args.test_path)
 
-    da_train_data = copy.deepcopy(valid_data) + copy.deepcopy(test_data)
+    # da_train_data = copy.deepcopy(valid_data) + copy.deepcopy(test_data)
+    da_train_data = copy.deepcopy(test_data)
+
     # for idx, datum in enumerate(da_train_data):
     #     if idx < len(train_data):
     #         datum[2] = 0
@@ -522,9 +538,10 @@ def main(train_path, valid_path, test_path, exp=0):
     # valid_data = dr.load_data(valid_path)
     # test_data = dr.load_data(test_path)
 
-    logger.info("Training Samples: {},"
-                "Validating Samples: {},"
-                "Testing Samples: {}".format(len(train_data), len(valid_data), len(test_data)))
+    writer.add_text('data/{}'.format(exp), "Training Samples: {},"
+                                           "Validating Samples: {},"
+                                           "Testing Samples: {}".format(len(train_data), len(valid_data),
+                                                                        len(test_data)))
 
     dg_train_sent_cls = data_generator(args, train_data)
     dg_train_domain_cls = data_generator(args, da_train_data)
@@ -549,23 +566,23 @@ def main(train_path, valid_path, test_path, exp=0):
 
     if args.training:
         model = AspectSent(args)
-        if args.if_gpu:
-            model = model.cuda(device=args.gpu)
+    if args.if_gpu:
+        model = model.cuda(device=args.gpu)
 
-        # train(model, dg_train_sent_cls, dg_valid_sent_cls, dg_test_sent_cls, args, exp, dg_train_sent_cls_eval,mode='sent_cls')
-        train(model, dg_train_sent_cls, dg_train_domain_cls, dg_valid_sent_cls, dg_test_sent_cls, args, exp,
-              dg_train_sent_cls_eval, dg_valid_sent_cls1, dg_test_sent_cls1)
+    # train(model, dg_train_sent_cls, dg_valid_sent_cls, dg_test_sent_cls, args, exp, dg_train_sent_cls_eval,mode='sent_cls')
+    train(model, dg_train_sent_cls, dg_train_domain_cls, dg_valid_sent_cls, dg_test_sent_cls, args, exp,
+          dg_train_sent_cls_eval, dg_valid_sent_cls1, dg_test_sent_cls1)
 
     # else:
     #     print('NOT arg.training')
     #     PATH = "checkpoints/config_crf_glove_tweets_20190212/checkpoint.pth.tar21"
     #     model.load_state_dict(torch.load(PATH))
     #     evaluate_test(dg_test_sent_cls, model, args, sample_out=False, mode='test')
-    logger.info(
-        '============\nExp Done:{3}\n'
-        'training:{0}\n'
-        'valid:{1}\n'
-        'test:{2}\n============'.format(traf, valid, test, exp))
+    writer.add_text('data/{}'.format(exp),
+                    '============\nExp Done:{3}\n'
+                    'training:{0}\n'
+                    'valid:{1}\n'
+                    'test:{2}\n============'.format(traf, valid, test, exp))
 
 
 def load_config(file):
@@ -583,6 +600,8 @@ if __name__ == "__main__":
     test_fi = [x for x in glob.glob(('{0}/processed_*test*').format(data_path))]
     train_fi = [x for x in glob.glob(('{0}/processed_*train*').format(data_path))]
     exp = 0
+    writer.add_text('config', '{}'.format(args))
+
     for traf in train_fi:
         train_key = traf.split('/')[-1].split('_')[1]
         for valid in test_fi:
@@ -593,7 +612,8 @@ if __name__ == "__main__":
                 # if valid_key == test_key and train_key != valid_key:
                 if valid_key == test_key:
                     exp += 1
-                    main(train_path=traf, valid_path=valid, test_path=test, exp=exp)
+                    main(train_path=traf, valid_path=valid, test_path=test)
+
     writer.close()
     pass
 
