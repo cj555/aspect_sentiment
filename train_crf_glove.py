@@ -50,6 +50,8 @@ parser.add_argument('--tb_note', default='', type=str)
 
 parser.add_argument('--gamma', default=10, type=float)
 parser.add_argument('--theta', default=1, type=float)
+parser.add_argument('--dc', default=0, type=float)
+
 parser.add_argument('--consistency', default=0.1, type=float)
 
 parser.add_argument('--lambd2', default=1, type=float)
@@ -71,8 +73,8 @@ parser.add_argument('--l_hidden_size', default=256, type=int)
 parser.add_argument('--l_num_layers', default=2, type=int)
 parser.add_argument('--l_dropout', default=0.3, type=float)
 parser.add_argument('--dropout', default=0.3, type=float)
-parser.add_argument('--train_adc2dc', action='store_true')  # CRF penalty
-parser.add_argument('--test_adc2dc', action='store_true')  # CRF penalty
+parser.add_argument('--train_adc2dc', action='store_true')
+parser.add_argument('--test_adc2dc', action='store_true')
 
 parser.add_argument('--clip_norm', default=3, type=float)
 
@@ -261,7 +263,7 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
                                        mode='sent_cls', dc_context=context_dc, adc_context=context_adc)
 
             # cls_loss_value.update(sent_cls_loss.item())
-            if not args.train_adc2dc:
+            if args.train_adc2dc:
                 model.eval()
                 train_score_adc_cp = train_score_adc.clone()
                 model.train()
@@ -314,7 +316,7 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
                 _, _, test_score_dc, _ = model(test_sent_vecs, test_mask_vecs, test_label_list, test_sent_lens,
                                                mode='sent_cls_dc')
 
-                if not args.test_adc2dc:
+                if args.test_adc2dc:
                     model.eval()
                     test_score_adc_cp = test_score_adc.clone()
                     model.train()
@@ -328,7 +330,7 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
                 dc_loss = (domain_cls_loss1 + domain_norm_pen1 + domain_cls_loss2 + domain_norm_pen2) / 2
 
             # Consistency Regularization
-            consistency_reg = (train_cls_loss_dc + test_sent_cls_loss_dc) * 0.5 * args.lambd2
+            consistency_reg = (train_cls_loss_dc + test_sent_cls_loss_dc) * 0.5
 
             # if args.da_grl_plus:
             #     model.zero_grad()
@@ -337,7 +339,7 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
             #     total_loss = sent_loss + train_sent_cls_loss_adc + train_sent_norm_pen_adc + dc_loss + da_loss  # +adc_loss
             # else:
             #     total_loss = sent_loss
-            total_loss = sent_loss + args.theta * adc_loss + args.consistency * consistency_reg * lambd2
+            total_loss = sent_loss + args.theta * adc_loss + args.consistency * consistency_reg * lambd2 + args.dc * dc_loss
             sent_loss_valid = monitor_loss(args, dg_valid_sent_cls1, model)
             sent_loss_test = monitor_loss(args, dg_test_sent_cls1, model)
 
@@ -386,6 +388,10 @@ def train(model, dg_sent_train, dg_domain_train, dg_sent_valid, dg_sent_test, ar
         model.eval()
         valid_acc, valid_f1 = evaluate_test(dg_sent_valid, model, args, mode='valid')
         test_acc, test_f1 = evaluate_test(dg_sent_test, model, args, mode='test')
+        writer.add_scalar('loss_{}/valid_acc'.format(exp), valid_acc, e_)
+        writer.add_scalar('loss_{}/valid_f1'.format(exp), valid_f1, e_)
+        writer.add_scalar('loss_{}/test_acc'.format(exp), test_acc, e_)
+        writer.add_scalar('loss_{}/test_f1'.format(exp), test_f1, e_)
 
         # if not early_stop_f1 and valid_f1 >= best_valid_f1:
         #     best_valid_f1 = valid_f1
