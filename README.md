@@ -64,6 +64,8 @@ Commonsense Knowledge into an Attentive LSTM [[Paper, AAAI2018]](https://www.aaa
 
 4. Utilizing BERT for Aspect-Based Sentiment Analysis
 via Constructing Auxiliary Sentence [[Paper, AAAI2019]](https://arxiv.org/pdf/1903.09588.pdf) [[Code, Pytorch]](https://github.com/HSLCY/ABSA-BERT-pair)
+5. Variational Semi-supervised Aspect-term Sentiment Analysis via Transformer [[Paper, ]](https://arxiv.org/pdf/1810.10437.pdf)
+
 
 ## others
 1. An Attentive Survey of Attention Models [[Paper, IJCAI2019]](https://arxiv.org/abs/1904.02874)
