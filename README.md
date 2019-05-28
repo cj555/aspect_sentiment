@@ -48,6 +48,9 @@ Classification[[Paper, naacal2018]](https://leuchine.github.io/papers/naacl18sen
 
 20. Hierarchical Attention Generative Adversarial Networks for Cross-domain Sentiment Classification [[Paper, ]](https://arxiv.org/pdf/1903.11334.pdf)
 
+21. Knowledge as A Bridge: Improving Cross-domain Answer Selection with
+External Knowledge [[Paper, ACL2018]](https://www.aclweb.org/anthology/C18-1279)
+
 ## Survey On Graph neural network
 
 1. How Powerful are Graph Neural Networks? [[Paper, ICLR2019]](https://openreview.net/pdf?id=ryGs6iA5Km)
