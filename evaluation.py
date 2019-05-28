@@ -7,7 +7,7 @@ from sklearn import metrics
 from sklearn.preprocessing import label_binarize
 
 
-def get_y_true(task_name):
+def get_y_true(task_name,domain=None):
     """ 
     Read file to obtain y_true.
     All of five tasks of Sentihood use the test set of task-BERT-pair-NLI-M to get true labels.
@@ -31,7 +31,7 @@ def get_y_true(task_name):
 
     elif task_name in ["semeval_term_NLI_M", "semeval_term_QA_M", "semeval_term_NLI_B", "semeval_term_QA_B"]:
 
-        true_data_file = "data/semeval2014/bert-pair/test_term_NLI_M.csv"
+        true_data_file = "data/semeval2014/bert-pair/{}/test_term_NLI_M.csv".format(domain)
 
         df = pd.read_csv(true_data_file, sep='\t', header=None).values
         y_true = []
@@ -402,6 +402,7 @@ def semeval_Acc(y_true, y_pred, score, classes=4):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--domain",default='Restaurants',type=str,choices=["Restaurants","laptop"])
     parser.add_argument("--task_name",
                         default=None,
                         type=str,
@@ -432,7 +433,7 @@ def main():
             'sentiment_Macro_AUC': sentiment_Macro_AUC
         }
     else:
-        y_true = get_y_true(args.task_name)
+        y_true = get_y_true(args.task_name,args.domain)
         y_pred, score = get_y_pred(args.task_name, args.pred_data_dir)
         aspect_P, aspect_R, aspect_F = semeval_PRF(y_true, y_pred)
         sentiment_Acc_4_classes = semeval_Acc(y_true, y_pred, score, 4)
