@@ -73,7 +73,7 @@ def get_y_true(task_name,domain=None):
     return y_true
 
 
-def get_y_pred(task_name, pred_data_dir):
+def get_y_pred(task_name, pred_data_dir, input_data_dir = None):
     """ 
     Read file to obtain y_pred and scores.
     """
@@ -152,7 +152,7 @@ def get_y_pred(task_name, pred_data_dir):
                 pred.append(int(s[0]))
                 score.append([float(s[1]), float(s[2]), float(s[3]), float(s[4]), float(s[5])])
                 s = f.readline().strip().split()
-    elif task_name in ["semeval_NLI_B", "semeval_QA_B", "semeval_term_NLI_B", "semeval_term_QA_B"]:
+    elif task_name in ["semeval_NLI_B", "semeval_QA_B","semeval_term_NLI_B", "semeval_term_QA_B"]:
         count = 0
         tmp = []
         with open(pred_data_dir, "r", encoding="utf-8") as f:
@@ -178,6 +178,43 @@ def get_y_pred(task_name, pred_data_dir):
                         pred.append(4)
                     tmp = []
                 s = f.readline().strip().split()
+    # elif task_name in ["semeval_term_NLI_B", "semeval_term_QA_B"]:
+    #     with open(input_data_dir+'/test_term_'+'_'.join(task_name.split("_")[-2:])+'.csv','r') as f:
+    #         input_data = f.readlines()
+    #
+    #     count = 0
+    #     tmp = []
+    #     sentence_count = 0
+    #     curr_sent = None
+    #     with open(pred_data_dir, "r", encoding="utf-8") as f:
+    #         s = f.readline().strip().split()
+    #         while s:
+    #             tmp.append([float(s[2])])
+    #             if curr_sent != input_data[count]:
+    #                 curr_sent = input_data[count]
+    #                 sentence_count=0
+    #             count += 1
+    #             if sentence_count == 2:
+    #                 sentence_count+=1
+    #                 tmp_sum = np.sum(tmp)
+    #                 t = []
+    #                 for i in range(5):
+    #                     t.append(tmp[i] / tmp_sum)
+    #                 score.append(t)
+    #                 if t[0] >= t[1] and t[0] >= t[2] and t[0] >= t[3] and t[0] >= t[4]:
+    #                     pred.append(0)
+    #                 elif t[1] >= t[0] and t[1] >= t[2] and t[1] >= t[3] and t[1] >= t[4]:
+    #                     pred.append(1)
+    #                 elif t[2] >= t[0] and t[2] >= t[1] and t[2] >= t[3] and t[2] >= t[4]:
+    #                     pred.append(2)
+    #                 elif t[3] >= t[0] and t[3] >= t[1] and t[3] >= t[2] and t[3] >= t[4]:
+    #                     pred.append(3)
+    #                 else:
+    #                     pred.append(4)
+    #                 tmp = []
+    #             s = f.readline().strip().split()
+
+
     else:
         count = 0
         with open(pred_data_dir + "price.txt", "r", encoding="utf-8") as f_price, \
@@ -416,6 +453,11 @@ def main():
                         type=str,
                         required=True,
                         help="The pred data dir.")
+    parser.add_argument("--input_data_dir",
+                        default=None,
+                        type=str,
+                        required=True,
+                        help="The pred data dir.")
     args = parser.parse_args()
 
     result = collections.OrderedDict()
@@ -434,7 +476,7 @@ def main():
         }
     else:
         y_true = get_y_true(args.task_name,args.domain)
-        y_pred, score = get_y_pred(args.task_name, args.pred_data_dir)
+        y_pred, score = get_y_pred(args.task_name, args.pred_data_dir,args.input_data_dir)
         aspect_P, aspect_R, aspect_F = semeval_PRF(y_true, y_pred)
         sentiment_Acc_4_classes = semeval_Acc(y_true, y_pred, score, 4)
         sentiment_Acc_3_classes = semeval_Acc(y_true, y_pred, score, 3)
