@@ -25,7 +25,8 @@ from processor import (Semeval_NLI_B_Processor, Semeval_NLI_M_Processor,
                        Semeval_QA_B_Processor, Semeval_QA_M_Processor,
                        Semeval_single_Processor, Sentihood_NLI_B_Processor,
                        Sentihood_NLI_M_Processor, Sentihood_QA_B_Processor,
-                       Sentihood_QA_M_Processor, Sentihood_single_Processor, Semeval_term_NLI_M_Processor,Semeval_term_QA_B_Processor)
+                       Sentihood_QA_M_Processor, Sentihood_single_Processor, Semeval_term_NLI_M_Processor,
+                       Semeval_term_QA_B_Processor, Semeval_term_bmes_NLI_M_Processor)
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',
@@ -158,7 +159,7 @@ def main():
                         choices=["sentihood_single", "sentihood_NLI_M", "sentihood_QA_M", \
                                  "sentihood_NLI_B", "sentihood_QA_B", "semeval_single", \
                                  "semeval_NLI_M", "semeval_QA_M", "semeval_NLI_B", "semeval_QA_B",
-                                 'semeval_term_NLI_M','semeval_term_QA_B'],
+                                 'semeval_term_NLI_M', 'semeval_term_QA_B', 'semeval_term_bmes_NLI_M'],
                         help="The name of the task to train.")
     parser.add_argument("--data_dir",
                         default=None,
@@ -288,6 +289,7 @@ def main():
         "semeval_single": Semeval_single_Processor,
         "semeval_NLI_M": Semeval_NLI_M_Processor,
         "semeval_term_NLI_M": Semeval_term_NLI_M_Processor,
+        "semeval_term_bmes_NLI_M": Semeval_term_bmes_NLI_M_Processor,
         "semeval_QA_M": Semeval_QA_M_Processor,
         "semeval_NLI_B": Semeval_NLI_B_Processor,
         "semeval_QA_B": Semeval_QA_B_Processor,
@@ -303,7 +305,7 @@ def main():
     # training set
     train_examples = None
     num_train_steps = None
-    train_examples = processor.get_train_examples(args.data_dir)
+    train_examples = processor.get_train_examples(args.data_dir)[:2]
     num_train_steps = int(
         len(train_examples) / args.train_batch_size * args.num_train_epochs)
 
@@ -328,7 +330,7 @@ def main():
 
     # test set
     if args.eval_test:
-        test_examples = processor.get_test_examples(args.data_dir)
+        test_examples = processor.get_test_examples(args.data_dir)[:2]
         test_features = convert_examples_to_features(
             test_examples, label_list, args.max_seq_length, tokenizer)
 

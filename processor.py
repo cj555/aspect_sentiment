@@ -309,8 +309,6 @@ class Semeval_single_Processor(DataProcessor):
         return examples
 
 
-
-
 class Semeval_NLI_M_Processor(DataProcessor):
     """Processor for the Semeval 2014 data set."""
 
@@ -351,11 +349,39 @@ class Semeval_NLI_M_Processor(DataProcessor):
                 InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
 
+
 class Semeval_term_NLI_M_Processor(Semeval_NLI_M_Processor):
     def get_train_examples(self, data_dir):
         """See base class."""
         train_data = pd.read_csv(os.path.join(data_dir, "train_term_NLI_M.csv"), header=None, sep="\t").values
         return self._create_examples(train_data, "train")
+
+    def get_dev_examples(self, data_dir):
+        """See base class."""
+        dev_data = pd.read_csv(os.path.join(data_dir, "dev_term_NLI_M.csv"), header=None, sep="\t").values
+        return self._create_examples(dev_data, "dev")
+
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        test_data = pd.read_csv(os.path.join(data_dir, "test_term_NLI_M.csv"), header=None, sep="\t").values
+        return self._create_examples(test_data, "test")
+
+
+class Semeval_term_bmes_NLI_M_Processor(Semeval_NLI_M_Processor):
+    def get_train_examples(self, data_dir):
+        """See base class."""
+        train_data = pd.read_csv(os.path.join(data_dir, "train_term_NLI_M.csv"), header=None, sep="\t").values
+        return self._create_examples(train_data, "train")
+
+    def get_labels(self):
+        # TODO:
+        """See base class."""
+        labels = ['none']
+        for pos in ['single', 'first word', 'last word', 'middle word']:
+            for sent in ['positive', 'neutral', 'negative', 'conflict']:
+                labels.append(pos + ' ' + sent)
+
+        return labels
 
     def get_dev_examples(self, data_dir):
         """See base class."""
@@ -407,6 +433,7 @@ class Semeval_QA_M_Processor(DataProcessor):
             examples.append(
                 InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
+
 
 class Semeval_term_QA_M_Processor(Semeval_QA_M_Processor):
     def get_train_examples(self, data_dir):
@@ -465,6 +492,7 @@ class Semeval_NLI_B_Processor(DataProcessor):
                 InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
 
+
 class Semeval_term_NLI_B_Processor(Semeval_NLI_B_Processor):
     def get_train_examples(self, data_dir):
         """See base class."""
@@ -480,6 +508,7 @@ class Semeval_term_NLI_B_Processor(Semeval_NLI_B_Processor):
         """See base class."""
         test_data = pd.read_csv(os.path.join(data_dir, "test_term_NLI_B.csv"), header=None, sep="\t").values
         return self._create_examples(test_data, "test")
+
 
 class Semeval_QA_B_Processor(DataProcessor):
     """Processor for the Semeval 2014 data set."""
@@ -520,6 +549,7 @@ class Semeval_QA_B_Processor(DataProcessor):
             examples.append(
                 InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
+
 
 class Semeval_term_QA_B_Processor(Semeval_QA_B_Processor):
     """Processor for the Semeval 2014 data set."""
