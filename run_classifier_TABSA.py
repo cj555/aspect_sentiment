@@ -228,6 +228,10 @@ def main():
                         default=False,
                         action='store_true',
                         help="Whether not to use CUDA when available")
+    parser.add_argument("--no_augmentation",
+                        default=False,
+                        action='store_true',
+                        help="Whether add none sample")
     parser.add_argument("--accumulate_gradients",
                         type=int,
                         default=1,
@@ -306,6 +310,9 @@ def main():
     train_examples = None
     num_train_steps = None
     train_examples = processor.get_train_examples(args.data_dir)[:2]
+    if args.no_augmentation:
+        train_examples = [x for x in train_examples if x.label != 'none']
+
     num_train_steps = int(
         len(train_examples) / args.train_batch_size * args.num_train_epochs)
 
