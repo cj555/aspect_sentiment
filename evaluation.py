@@ -7,7 +7,7 @@ from sklearn import metrics
 from sklearn.preprocessing import label_binarize
 
 
-def get_y_true(task_name,domain=None):
+def get_y_true(task_name, domain=None):
     """ 
     Read file to obtain y_true.
     All of five tasks of Sentihood use the test set of task-BERT-pair-NLI-M to get true labels.
@@ -49,6 +49,26 @@ def get_y_true(task_name,domain=None):
             elif label == 'none':
                 n = 4
             y_true.append(n)
+    elif task_name in ["dongli_term_NLI_M"]:
+
+        true_data_file = "data/dongli/bert-pair/test_term_NLI_M.csv"
+
+        df = pd.read_csv(true_data_file, sep='\t', header=None).values
+        y_true = []
+        for i in range(len(df)):
+            label = df[i][1]
+            assert label in ['positive', 'neutral', 'negative', 'conflict', 'none'], "error!"
+            if label == 'positive':
+                n = 0
+            elif label == 'neutral':
+                n = 1
+            elif label == 'negative':
+                n = 2
+            elif label == 'conflict':
+                n = 3
+            elif label == 'none':
+                n = 4
+            y_true.append(n)
     else:
 
         true_data_file = "data/semeval2014/bert-pair/test_NLI_M.csv"
@@ -73,7 +93,7 @@ def get_y_true(task_name,domain=None):
     return y_true
 
 
-def get_y_pred(task_name, pred_data_dir, input_data_dir = None):
+def get_y_pred(task_name, pred_data_dir, input_data_dir=None):
     """ 
     Read file to obtain y_pred and scores.
     """
@@ -145,14 +165,14 @@ def get_y_pred(task_name, pred_data_dir, input_data_dir = None):
                     s = f2_safety.readline().strip().split()
                 if count % 4 == 3:
                     s = f2_transit.readline().strip().split()
-    elif task_name in ["semeval_NLI_M", "semeval_QA_M","semeval_term_NLI_M", "semeval_term_QA_M"]:
+    elif task_name in ["semeval_NLI_M", "semeval_QA_M", "semeval_term_NLI_M", "semeval_term_QA_M",'dongli_term_NLI_M']:
         with open(pred_data_dir, "r", encoding="utf-8") as f:
             s = f.readline().strip().split()
             while s:
                 pred.append(int(s[0]))
                 score.append([float(s[1]), float(s[2]), float(s[3]), float(s[4]), float(s[5])])
                 s = f.readline().strip().split()
-    elif task_name in ["semeval_NLI_B", "semeval_QA_B","semeval_term_NLI_B", "semeval_term_QA_B"]:
+    elif task_name in ["semeval_NLI_B", "semeval_QA_B", "semeval_term_NLI_B", "semeval_term_QA_B"]:
         count = 0
         tmp = []
         with open(pred_data_dir, "r", encoding="utf-8") as f:
@@ -213,7 +233,6 @@ def get_y_pred(task_name, pred_data_dir, input_data_dir = None):
     #                     pred.append(4)
     #                 tmp = []
     #             s = f.readline().strip().split()
-
 
     else:
         count = 0
@@ -439,14 +458,15 @@ def semeval_Acc(y_true, y_pred, score, classes=4):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--domain",default='Restaurants',type=str,choices=["Restaurants","laptop"])
+    parser.add_argument("--domain", default='Restaurants', type=str, choices=["Restaurants", "laptop"])
     parser.add_argument("--task_name",
                         default=None,
                         type=str,
                         required=True,
                         choices=["sentihood_single", "sentihood_NLI_M", "sentihood_QA_M", \
                                  "sentihood_NLI_B", "sentihood_QA_B", "semeval_single", \
-                                 "semeval_NLI_M", "semeval_QA_M", "semeval_NLI_B", "semeval_QA_B","semeval_term_NLI_M", "semeval_term_QA_M", "semeval_term_NLI_B", "semeval_term_QA_B"],
+                                 "semeval_NLI_M", "semeval_QA_M", "semeval_NLI_B", "semeval_QA_B", "semeval_term_NLI_M",
+                                 "semeval_term_QA_M", "semeval_term_NLI_B", "semeval_term_QA_B", 'dongli_term_NLI_M'],
                         help="The name of the task to evalution.")
     parser.add_argument("--pred_data_dir",
                         default=None,
@@ -475,8 +495,8 @@ def main():
             'sentiment_Macro_AUC': sentiment_Macro_AUC
         }
     else:
-        y_true = get_y_true(args.task_name,args.domain)
-        y_pred, score = get_y_pred(args.task_name, args.pred_data_dir,args.input_data_dir)
+        y_true = get_y_true(args.task_name, args.domain)
+        y_pred, score = get_y_pred(args.task_name, args.pred_data_dir, args.input_data_dir)
         aspect_P, aspect_R, aspect_F = semeval_PRF(y_true, y_pred)
         sentiment_Acc_4_classes = semeval_Acc(y_true, y_pred, score, 4)
         sentiment_Acc_3_classes = semeval_Acc(y_true, y_pred, score, 3)

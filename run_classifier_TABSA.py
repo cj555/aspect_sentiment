@@ -309,7 +309,7 @@ def main():
     # training set
     train_examples = None
     num_train_steps = None
-    train_examples = processor.get_train_examples(args.data_dir)[:2]
+    train_examples = processor.get_train_examples(args.data_dir)
     if args.no_augmentation:
         train_examples = [x for x in train_examples if x.label != 'none']
 
@@ -337,7 +337,7 @@ def main():
 
     # test set
     if args.eval_test:
-        test_examples = processor.get_test_examples(args.data_dir)[:2]
+        test_examples = processor.get_test_examples(args.data_dir)
         test_features = convert_examples_to_features(
             test_examples, label_list, args.max_seq_length, tokenizer)
 
